@@ -30,3 +30,13 @@
 *.exe
 *.out
 *.app
+
+# Build directories
+**/build/
+**/bin/
+**/buildlogs.log
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+CMakeScripts/
