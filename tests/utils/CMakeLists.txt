@@ -12,12 +12,6 @@ add_executable(test_ss_utils
     ../main_test.cpp # Link with the common test main
 )
 
-# Include the directory where the ss_utils headers are located
-# This is necessary to find the ss_utils headers during compilation
-target_include_directories(test_ss_utils PRIVATE
-    "${CMAKE_CURRENT_LIST_DIR}/../../src"
-)
-
 # Link against the utility library we are testing (ss_utils)
 # and Google Test
 target_link_libraries(test_ss_utils PRIVATE

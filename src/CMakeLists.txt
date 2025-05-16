@@ -1,5 +1,6 @@
 # Add the utils subdirectory first, as other components might depend on it
 add_subdirectory(utils)
+add_subdirectory(crypto)
 
 # Define the main library
 # This could be an INTERFACE library if it only contains headers,
@@ -20,7 +21,10 @@ target_include_directories(SecureStorage_lib PUBLIC
 
 # Link dependencies
 # All components of our library will need utils
-target_link_libraries(SecureStorage_lib PUBLIC sfs_utils)
+target_link_libraries(SecureStorage_lib PUBLIC 
+    ss_utils
+    ss_crypto
+    )
 
 # Mbed TLS libraries: mbedcrypto is the core.
 # mbedtls provides TLS functionalities, mbedx509 provides X.509 certificate parsing.

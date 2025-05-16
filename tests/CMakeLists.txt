@@ -3,6 +3,7 @@ enable_testing()
 
 # Add the subdirectory for utility tests
 add_subdirectory(utils)
+add_subdirectory(crypto)
 
 # You can add more subdirectories for other modules' tests here
 # add_subdirectory(crypto)

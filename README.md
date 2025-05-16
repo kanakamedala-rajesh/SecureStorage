@@ -8,6 +8,6 @@ cd build
 cmake .. 
 cmake --build .
 cd tests
-cpack
+ctest
 
 ```
