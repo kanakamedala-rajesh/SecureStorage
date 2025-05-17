@@ -1,6 +1,7 @@
 add_library(ss_utils STATIC
     Logger.cpp
     Error.cpp
+    FileUtil.cpp
 )
 
 target_include_directories(ss_utils PUBLIC

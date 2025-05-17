@@ -8,6 +8,7 @@ endif()
 
 add_executable(test_ss_utils
     test_Logger.cpp
+    test_FileUtil.cpp
     # Add other test_*.cpp files for utils here
     ../main_test.cpp # Link with the common test main
 )
