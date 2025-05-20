@@ -108,7 +108,7 @@ namespace std {
      * std::error_code mechanisms.
      */
     template <>
-    struct is_error_code_enum<SecureStorage::Error::Errc> : true_type {};
+    struct is_error_code_enum<SecureStorage::Error::Errc> : public true_type {};
 } // namespace std
 
 #endif // SS_ERROR_H

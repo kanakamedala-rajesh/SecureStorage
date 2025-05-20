@@ -8,7 +8,7 @@ add_subdirectory(storage)
 # or a STATIC/SHARED library if it has its own .cpp files.
 # For now, since it will include some cpp files, let's make it a static library.
 add_library(SecureStorage_lib STATIC
-    main.cpp
+    SecureStorageManager.cpp
     # Add .cpp files here as they are created
 )
 
