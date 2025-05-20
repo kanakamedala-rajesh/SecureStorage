@@ -1,4 +1,3 @@
-// SecureStorage/tests/manager/TestSecureStorageManager.cpp
 #include "gtest/gtest.h"
 #include "SecureStorageManager.h" // Main public API header
 #include "Error.h"   // For Errc

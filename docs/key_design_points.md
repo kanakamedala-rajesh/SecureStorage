@@ -25,3 +25,26 @@
 - File Naming: Uses consistent extensions (.enc, .bak, .tmp).
 
 - Error Handling: Propagates errors using Error::Errc and logs extensively using SS_LOG_* macros.
+
+
+
+### Key Features of this FileWatcher Implementation:
+
+- inotify Based: Uses Linux inotify for efficient file system event monitoring.
+
+- Threaded: Runs monitorLoop in a separate std::thread to avoid blocking the caller.
+
+- Stop Mechanism: Uses a pipe to signal the monitoring thread to terminate gracefully. poll() is used to wait on both the inotify FD and the pipe FD.
+
+- Event Logging: Logs detailed information about detected events using SS_LOG_INFO.
+Specific Events: Configured to watch for a comprehensive set of events including modifications, closes after write, attribute changes, creations, deletions, and moves.
+
+- Watch Management: addWatch and removeWatch allow dynamic management of watched paths. Maps m_wdToPathMap and m_pathToWdMap are used to associate watch descriptors with paths.
+
+- Mutex Protected: Access to the watch descriptor maps is protected by m_watchMutex for thread safety between the monitor thread and public methods like addWatch/removeWatch.
+
+- Optional Callback: Supports an optional EventCallback for users to react to events programmatically.
+
+- Error Handling: Uses strerror(errno) for system call errors and logs appropriately.
+
+- Non-Blocking: inotify_init1(IN_NONBLOCK) and pipe() are used, and poll() manages waiting, which is essential for the stop mechanism to work without forced thread termination.

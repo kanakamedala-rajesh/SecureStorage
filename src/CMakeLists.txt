@@ -2,6 +2,7 @@
 add_subdirectory(utils)
 add_subdirectory(crypto)
 add_subdirectory(storage)
+add_subdirectory(file_watcher)
 
 # Define the main library
 # This could be an INTERFACE library if it only contains headers,

@@ -1,5 +1,3 @@
-# SecureStorage/tests/manager/CMakeLists.txt
-
 # Ensure Google Test targets are available
 if(NOT TARGET gtest OR NOT TARGET gtest_main)
     message(FATAL_ERROR "Google Test (gtest, gtest_main) targets not found. Ensure FetchContent is working.")
