@@ -7,66 +7,99 @@
 #include <vector>
 #include <memory> // For std::unique_ptr
 
-// Forward declaration for PImpl if used, or for the internal SecureStore
+/**
+ * @mainpage SecureStorage Library Documentation
+ *
+ * @section intro_sec Introduction
+ * The SecureStorage library provides robust C++11 compatible mechanisms for
+ * encrypting, decrypting, and securely storing data on disk. It is designed
+ * with a focus on low memory and CPU footprints, making it suitable for
+ * resource-constrained environments such as automotive custom Linux hardware
+ * and Android 18 based displays.
+ *
+ * The library ensures data confidentiality and integrity through authenticated
+ * encryption and supports resilience against power key cycles.
+ *
+ * @section features_sec Key Features
+ * - **Strong Encryption:** Utilizes AES-256-GCM for authenticated encryption, providing both confidentiality and data integrity.
+ * - **Device-Specific Keys:** Derives unique encryption keys for each device using its serial number via HKDF (HMAC-based Key Derivation Function). Keys are not stored directly.
+ * - **Secure Data Storage:** Manages encrypted data items within a specified root storage path.
+ * - **Atomic Operations:** Employs atomic file write strategies (write-to-temp then rename) to prevent data corruption during power loss or unexpected shutdowns.
+ * - **Backup Strategy:** Maintains backup copies of encrypted data files for enhanced data resilience.
+ * - **File Watcher:** Continuously monitors encrypted files for unintended modifications and logs these operations.
+ * - **Cross-Platform Design:** Built with C++11 for cross-compilability on target Linux-based systems.
+ * - **Error Handling:** Provides clear error reporting via `SecureStorage::Error::Errc` and `std::error_code`.
+ * - **Low Footprint:** Designed to be mindful of memory and CPU usage.
+ * - **Offline Operation:** Operates without requiring internet access.
+ *
+ * @section architecture_sec Architecture Overview
+ * The library is composed of several key modules:
+ * - **SecureStorageManager:** The main public facade providing a simplified API for library users.
+ * - **SecureStore:** Handles the logical storage and retrieval of data items, managing encryption, file I/O, and backups.
+ * - **FileWatcher:** Monitors the storage directory for changes.
+ * - **Encryptor & KeyProvider:** Core cryptographic components for AES-GCM encryption and key derivation.
+ * - **Utilities:** Helper classes for logging, error handling, and file operations.
+ *
+ * @section usage_sec Basic Usage
+ * Include the main header and initialize the `SecureStorageManager`:
+ * @code
+ * #include "SecureStorage.h" // Main library header
+ * #include <iostream>
+ * #include <vector>
+ * #include <string>
+ *
+ * int main() {
+ * std::string root_path = "./my_app_secure_data"; // Choose an appropriate path
+ * std::string device_serial = "012345678";    // Unique 9-digit device serial
+ *
+ * SecureStorage::SecureStorageManager manager(root_path, device_serial);
+ *
+ * if (!manager.isInitialized()) {
+ * std::cerr << "Failed to initialize SecureStorageManager!" << std::endl;
+ * return 1;
+ * }
+ * std::cout << "SecureStorageManager initialized. File watcher is "
+ * << (manager.isFileWatcherActive() ? "active." : "inactive.") << std::endl;
+ *
+ * std::string data_id = "feature_X_config";
+ * std::vector<unsigned char> my_data = {'s', 'e', 'c', 'r', 'e', 't', '!'};
+ *
+ * if (manager.storeData(data_id, my_data) == SecureStorage::Error::Errc::Success) {
+ * std::cout << "Data stored for ID: " << data_id << std::endl;
+ * }
+ *
+ * std::vector<unsigned char> retrieved_data;
+ * if (manager.retrieveData(data_id, retrieved_data) == SecureStorage::Error::Errc::Success) {
+ * std::cout << "Retrieved data for ID " << data_id << ": ";
+ * for (unsigned char c : retrieved_data) { std::cout << c; }
+ * std::cout << std::endl;
+ * }
+ * return 0;
+ * }
+ * @endcode
+ *
+ * @section building_sec Building the Library
+ * The library uses CMake for building. Ensure Mbed TLS is available (it can be
+ * fetched automatically via FetchContent).
+ * @code
+ * mkdir build && cd build
+ * cmake ..
+ * cmake --build .
+ * @endcode
+ *
+ * @section notes_sec Important Notes
+ * - The security of the stored data heavily relies on the uniqueness and secrecy of the device serial number
+ * and the physical security of the device.
+ * - The FileWatcher provides logging of filesystem events; application-level responses to these events
+ * need to be implemented by the user if required beyond logging.
+ */
+
 namespace SecureStorage {
 namespace Storage {
     class SecureStore; // Forward declare
 }
 // Forward declare FileWatcher if it were to be part of SecureStorageManager
 // namespace Watcher { class FileWatcher; }
-
-/**
- * @mainpage SecureStorage Library
- *
- * @section intro_sec Introduction
- * The SecureStorage library provides C++11 compatible mechanisms for encrypting,
- * decrypting, and securely storing data on disk, primarily targeted for
- * automotive custom Linux hardware and Android 18 based displays with
- * low memory and CPU footprints.
- *
- * It features:
- * - AES-256-GCM for authenticated encryption.
- * - Key derivation from a device-specific serial number using HKDF.
- * - Atomic file writes and backup strategies for data resilience.
- * - (Future) File watcher for monitoring unintended modifications.
- *
- * @section usage_sec Basic Usage
- * ```cpp
- * #include "SecureStorage.h" // This header
- * #include <iostream>
- *
- * int main() {
- * std::string root_path = "/tmp/my_secure_storage_data";
- * std::string serial_number = "DEVICE12345";
- *
- * SecureStorage::SecureStorageManager storageManager(root_path, serial_number);
- *
- * if (!storageManager.isInitialized()) {
- * std::cerr << "Failed to initialize SecureStorageManager!" << std::endl;
- * return 1;
- * }
- *
- * std::string dataId = "my_feature_settings";
- * std::vector<unsigned char> data_to_store = {'s', 'e', 'c', 'r', 'e', 't'};
- *
- * if (storageManager.storeData(dataId, data_to_store) == SecureStorage::Error::Errc::Success) {
- * std::cout << "Data stored successfully." << std::endl;
- * } else {
- * std::cerr << "Failed to store data." << std::endl;
- * }
- *
- * std::vector<unsigned char> retrieved_data;
- * if (storageManager.retrieveData(dataId, retrieved_data) == SecureStorage::Error::Errc::Success) {
- * std::cout << "Data retrieved: ";
- * for (unsigned char c : retrieved_data) { std::cout << c; }
- * std::cout << std::endl;
- * } else {
- * std::cerr << "Failed to retrieve data." << std::endl;
- * }
- * return 0;
- * }
- * ```
- */
 
 /**
  * @class SecureStorageManager

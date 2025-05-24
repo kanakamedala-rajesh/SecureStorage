@@ -81,19 +81,32 @@ add_subdirectory(examples)
 # )
 
 # --- Doxygen (Optional, can be added later) ---
-# find_package(Doxygen)
-# if(DOXYGEN_FOUND)
-#     set(DOXYGEN_IN ${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile.in)
-#     set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
-#     configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
-#     add_custom_target(doxygen ALL
-#         COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_OUT}
-#         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-#         COMMENT "Generating API documentation with Doxygen"
-#         VERBATIM)
-# else()
-#     message(STATUS "Doxygen not found. Documentation will not be generated.")
-# endif()
+find_package(Doxygen)
+if(DOXYGEN_FOUND)
+    set(DOXYGEN_PROJECT_VERSION "${PROJECT_VERSION}") # Use project version from CMake
+    set(DOXYGEN_INPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/examples")
+    set(DOXYGEN_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/docs/doxygen_html") # Output relative to build dir
+    set(DOXYFILE_IN "${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in") # Assuming Doxyfile.in is in root
+    set(DOXYFILE_OUT "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile")
+
+    # Create a configuration string for Doxygen from CMake variables
+    # This makes it easier to use @VAR@ substitutions in Doxyfile.in
+    # For example, INPUT needs absolute paths.
+    # However, the Doxyfile.in shown above directly uses CMake variables that
+    # configure_file will replace.
+
+    configure_file(${DOXYFILE_IN} ${DOXYFILE_OUT} @ONLY)
+
+    add_custom_target(doxygen COMMAND
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${DOXYGEN_OUTPUT_DIR} # Create output directory
+        COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE_OUT}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} # Doxygen should run where Doxyfile is
+        COMMENT "Generating API documentation with Doxygen into ${DOXYGEN_OUTPUT_DIR}"
+        VERBATIM)
+    message(STATUS "Doxygen target added. Output will be in ${DOXYGEN_OUTPUT_DIR}")
+else()
+    message(STATUS "Doxygen not found. Documentation will not be generated.")
+endif()
 
 message(STATUS "Mbed TLS source dir: ${mbedtls_SOURCE_DIR}")
 message(STATUS "Mbed TLS binary dir: ${mbedtls_BINARY_DIR}")

@@ -5,7 +5,13 @@
 #include <sys/stat.h> // For mkdir, stat
 #include <cerrno>   // For errno
 #include <cstring>  // For strerror
-#include <unistd.h> // For fsync (POSIX)
+#ifdef _WIN32
+// Windows-specific includes
+#include <io.h> // For _commit (Windows equivalent of fsync)
+#else
+// POSIX-specific includes
+#include <unistd.h> // For fsync
+#endif
 
 // For directory listing (POSIX)
 #include <dirent.h>

@@ -1,0 +1,49 @@
+PROJECT_NAME           = "SecureStorage Library"
+PROJECT_NUMBER         = @SecureStorage_VERSION@
+PROJECT_BRIEF          = "Secure data storage and file watching for embedded systems"
+OUTPUT_DIRECTORY       = @DOXYGEN_OUTPUT_DIR@
+INPUT                  = @CMAKE_SOURCE_DIR@/src \
+                         @CMAKE_SOURCE_DIR@/examples # Add other dirs if they have documented code
+RECURSIVE              = YES
+EXTRACT_ALL            = YES # Set to NO if you only want to extract documented entities
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+HIDE_UNDOC_MEMBERS     = YES
+HIDE_UNDOC_CLASSES     = YES
+BRIEF_MEMBER_DESC      = YES
+REPEAT_BRIEF           = YES
+ALWAYS_DETAILED_SEC    = NO
+FULL_PATH_NAMES        = NO
+STRIP_FROM_PATH        = @CMAKE_SOURCE_DIR@
+INTERNAL_DOCS          = NO
+CLASS_DIAGRAMS         = YES # Requires 'dot' tool (Graphviz)
+HAVE_DOT               = YES # Set to NO if you don't have dot/Graphviz
+DOT_IMAGE_FORMAT       = png
+INTERACTIVE_SVG        = YES
+CLASS_GRAPH            = YES
+COLLABORATION_GRAPH    = YES
+UML_LOOK               = YES
+UML_LIMIT_NUM_FIELDS   = 10
+TEMPLATE_RELATIONS     = YES
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = NO
+SEARCH_INCLUDES        = YES
+INCLUDE_PATH           = @CMAKE_SOURCE_DIR@/src
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html 
+GENERATE_LATEX         = NO  # Set to YES for PDF output (requires LaTeX tools)
+# USE_MDFILE_AS_MAINPAGE = @CMAKE_SOURCE_DIR@/README.md # Optional: Use README as main page instead of \mainpage in a .h file
+USE_MDFILE_AS_MAINPAGE = @CMAKE_SOURCE_DIR@/src/SecureStorageManager.h
+
+# Tell Doxygen to look for C++ files
+FILE_PATTERNS          = *.h *.cpp *.hpp
+
+# Set the main page if not using README.md for it
+# (If using \mainpage in SecureStorage.h, this isn't strictly needed but good for clarity)
+# USE_MDFILE_AS_MAINPAGE =
+# If you have a dedicated mainpage.dox file:
+# INPUT                 += @CMAKE_SOURCE_DIR@/docs/mainpage.dox
+
+# To get CMake variables like @SecureStorage_VERSION@, @CMAKE_BINARY_DIR@, @CMAKE_SOURCE_DIR@
+# you'll use configure_file in CMakeLists.txt
