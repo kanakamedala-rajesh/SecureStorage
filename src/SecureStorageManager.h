@@ -2,6 +2,7 @@
 #define SECURE_STORAGE_H
 
 #include "utils/Error.h" // For SecureStorage::Error::Errc
+#include "file_watcher/FileWatcher.h" // For FileWatcher::EventCallback
 #include <string>
 #include <vector>
 #include <memory> // For std::unique_ptr
@@ -89,8 +90,13 @@ public:
      * @param deviceSerialNumber A unique identifier for the device (e.g., a serial number)
      * used in the cryptographic key derivation process.
      * Must not be empty.
+     * @param fileWatcherCallback An optional callback for file watcher events.
+     * If nullptr, default logging by FileWatcher will occur.
      */
-    SecureStorageManager(const std::string& rootStoragePath, const std::string& deviceSerialNumber);
+    SecureStorageManager(
+        const std::string& storagePath,
+        const std::string& keyFilePath,
+        FileWatcher::EventCallback callback); // MODIFIED: Was 'int pollingIntervalMs'
 
     /**
      * @brief Destructor. Cleans up resources.
@@ -183,11 +189,27 @@ public:
      */
     Error::Errc listDataIds(std::vector<std::string>& out_data_ids) const;
 
+    /**
+     * @brief Checks if the file watcher component is active.
+     *
+     * The file watcher monitors the storage directory for external changes.
+     * This method indicates if the watcher was successfully initialized and started.
+     * Note that the SecureStorageManager itself might be `isInitialized()` for storage
+     * operations even if the file watcher failed to start.
+     *
+     * @return true if the file watcher is active, false otherwise.
+     */
+    bool isFileWatcherActive() const;
+
 private:
     // Using PImpl to hide SecureStore and other potential future members
     // like FileWatcher, and to keep this public header clean.
     class SecureStorageManagerImpl;
     std::unique_ptr<SecureStorageManagerImpl> m_impl;
+
+    // Member variable declaration (around line 98)
+    // This line should now compile correctly after adding the include for FileWatcher
+    FileWatcher::EventCallback fileWatcherCallback = nullptr; // Optional callback for file watcher events
 };
 
 } // namespace SecureStorage

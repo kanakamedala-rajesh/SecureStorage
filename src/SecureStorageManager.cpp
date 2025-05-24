@@ -1,6 +1,7 @@
 #include "SecureStorageManager.h" // Public API header
 #include "storage/SecureStore.h" // Definition of SecureStore
 #include "utils/Logger.h"        // For SS_LOG macros
+#include "file_watcher/FileWatcher.h" // FileWatcher definition
 
 namespace SecureStorage {
 
@@ -8,18 +9,24 @@ namespace SecureStorage {
 class SecureStorageManager::SecureStorageManagerImpl {
 public:
     std::unique_ptr<Storage::SecureStore> secureStoreInstance;
-    // std::unique_ptr<Watcher::FileWatcher> fileWatcherInstance; // Future addition
+    std::unique_ptr<FileWatcher::FileWatcher> fileWatcherInstance; // Future addition
     bool isManagerInitialized;
+    bool isFileWatcherActive;
 
-    SecureStorageManagerImpl(const std::string& rootStoragePath, const std::string& deviceSerialNumber)
+    // Constructor initializes the SecureStore and integrates FileWatcher
+    SecureStorageManagerImpl(
+        const std::string& rootStoragePath, 
+        const std::string& deviceSerialNumber,
+        FileWatcher::EventCallback fileWatcherCallback
+    )
         : secureStoreInstance(nullptr),
-          isManagerInitialized(false) {
+          fileWatcherInstance(nullptr),
+          isManagerInitialized(false),
+          isFileWatcherActive(false) {  
         
         SS_LOG_INFO("SecureStorageManagerImpl: Initializing with root path: '" << rootStoragePath
                     << "' and device serial: '" << (deviceSerialNumber.empty() ? "EMPTY" : "PRESENT") << "'");
 
-        // SecureStore constructor handles empty path/serial and logs, then isInitialized() will be false.
-        // We create it directly with new for C++11 unique_ptr.
         secureStoreInstance = std::unique_ptr<Storage::SecureStore>(
             new Storage::SecureStore(rootStoragePath, deviceSerialNumber)
         );
@@ -27,26 +34,61 @@ public:
         if (secureStoreInstance && secureStoreInstance->isInitialized()) {
             isManagerInitialized = true;
             SS_LOG_INFO("SecureStorageManagerImpl: SecureStore component initialized successfully.");
+
+            // Initialize and start the FileWatcher
+            fileWatcherInstance = std::unique_ptr<FileWatcher::FileWatcher>(
+                new FileWatcher::FileWatcher(fileWatcherCallback) 
+            );
+            
+            if (fileWatcherInstance) {
+                if (fileWatcherInstance->start()) {
+                    SS_LOG_DEBUG("SecureStorageManagerImpl: FileWatcher core started, attempting to add watch.");
+                    if (fileWatcherInstance->addWatch(rootStoragePath)) {
+                        isFileWatcherActive = true;
+                        SS_LOG_INFO("SecureStorageManagerImpl: FileWatcher started and watching path: " << rootStoragePath);
+                    } else {
+                        SS_LOG_ERROR("SecureStorageManagerImpl: Failed to add watch to FileWatcher for path: " << rootStoragePath << ". Stopping watcher.");
+                        fileWatcherInstance->stop(); // Stop it if watch couldn't be added
+                        fileWatcherInstance.reset();
+                    }
+                } else {
+                    SS_LOG_ERROR("SecureStorageManagerImpl: Failed to start FileWatcher core.");
+                    fileWatcherInstance.reset(); 
+                }
+            } else {
+                 SS_LOG_ERROR("SecureStorageManagerImpl: Failed to create FileWatcher instance.");
+            }
+
         } else {
-            SS_LOG_ERROR("SecureStorageManagerImpl: SecureStore component failed to initialize.");
-            // secureStoreInstance might be null if its constructor threw an unhandled exception,
-            // or it's non-null but its internal isInitialized is false.
-            // Resetting to nullptr if not properly initialized.
+            SS_LOG_ERROR("SecureStorageManagerImpl: SecureStore component failed to initialize. File watcher will not be started.");
             secureStoreInstance.reset(); 
         }
     }
 
     ~SecureStorageManagerImpl() {
-        SS_LOG_INFO("SecureStorageManagerImpl shutting down.");
-        // unique_ptr will handle deletion of secureStoreInstance
+        SS_LOG_INFO("SecureStorageManagerImpl shutting down...");
+        if (fileWatcherInstance) {
+            SS_LOG_DEBUG("SecureStorageManagerImpl: Stopping FileWatcher...");
+            fileWatcherInstance->stop();
+            fileWatcherInstance.reset(); // Explicitly reset after stopping
+            SS_LOG_DEBUG("SecureStorageManagerImpl: FileWatcher stopped and reset.");
+        }
+        // unique_ptr will handle deletion of secureStoreInstance if not already null
+        if (secureStoreInstance) {
+            secureStoreInstance.reset();
+             SS_LOG_DEBUG("SecureStorageManagerImpl: SecureStore reset.");
+        }
     }
 };
 
 
 // --- SecureStorageManager Public API Implementation ---
 
-SecureStorageManager::SecureStorageManager(const std::string& rootStoragePath, const std::string& deviceSerialNumber)
-    : m_impl(new SecureStorageManagerImpl(rootStoragePath, deviceSerialNumber)) {}
+SecureStorageManager::SecureStorageManager(
+    const std::string& rootStoragePath,
+    const std::string& deviceSerialNumber,
+    FileWatcher::EventCallback fileWatcherCallback
+) : m_impl(new SecureStorageManagerImpl(rootStoragePath, deviceSerialNumber, fileWatcherCallback)) {}
 
 SecureStorageManager::~SecureStorageManager() = default; // Needed for std::unique_ptr<PImpl>
 
@@ -58,8 +100,15 @@ SecureStorageManager& SecureStorageManager::operator=(SecureStorageManager&& oth
 
 
 bool SecureStorageManager::isInitialized() const {
-    if (!m_impl) return false; // Should not happen if constructor ran
+    if (!m_impl) return false;
+    // Manager is considered initialized if the core SecureStore is initialized.
+    // Watcher status is secondary for the overall manager readiness for storage operations.
     return m_impl->isManagerInitialized;
+}
+
+bool SecureStorageManager::isFileWatcherActive() const {
+    if (!m_impl) return false;
+    return m_impl->isFileWatcherActive;
 }
 
 Error::Errc SecureStorageManager::storeData(const std::string& data_id, const std::vector<unsigned char>& plain_data) {

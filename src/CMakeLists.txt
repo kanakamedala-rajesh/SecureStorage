@@ -25,6 +25,7 @@ target_include_directories(SecureStorage_lib PUBLIC
 # All components of our library will need storage
 target_link_libraries(SecureStorage_lib PUBLIC 
     ss_storage
+    ss_file_watcher
     )
 
 # Mbed TLS libraries: mbedcrypto is the core.
