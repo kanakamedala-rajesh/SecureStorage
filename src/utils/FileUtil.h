@@ -9,6 +9,8 @@
 namespace SecureStorage {
 namespace Utils {
 
+const std::string TEMP_FILE_UTIL_SUFFIX = ".tmp";
+
 /**
  * @class FileUtil
  * @brief Provides utility functions for file system operations.

@@ -15,21 +15,47 @@ namespace SecureStorage {
 namespace Utils {
 
 std::string FileUtil::getDirectory(const std::string& filepath) {
-    size_t last_slash_idx = filepath.find_last_of("/\\");
+    size_t last_slash_idx = filepath.find_last_of("/\\"); // Handles both Windows and Unix separators
     if (std::string::npos != last_slash_idx) {
+        if (last_slash_idx == 0) { // Path like "/file.txt"
+            return filepath.substr(0, 1); // Return "/"
+        }
         return filepath.substr(0, last_slash_idx);
     }
     return ""; // Or "." for current directory if appropriate
 }
 
 Error::Errc FileUtil::atomicWriteFile(const std::string& filepath, const std::vector<unsigned char>& data) {
-    if (filepath.empty()) {
+if (filepath.empty()) {
         SS_LOG_ERROR("Filepath for atomic write is empty.");
         return Error::Errc::InvalidArgument;
     }
 
-    std::string tempFilepath = filepath + ".tmp";
-    std::string backupFilepath = filepath + ".bak"; // For a more robust 2-stage atomic, not fully implemented here yet for simplicity
+    // Step 0: Ensure the directory for the output file exists
+    std::string outputDir = getDirectory(filepath);
+    if (!outputDir.empty()) { // If outputDir is empty, it means file is in current dir
+        if (!pathExists(outputDir)) {
+            SS_LOG_DEBUG("Attempting to create output directory: " << outputDir);
+            Error::Errc dirErr = createDirectories(outputDir);
+            if (dirErr != Error::Errc::Success) {
+                SS_LOG_ERROR("Failed to create directory '" << outputDir << "' for file '" << filepath << "'. Error: "
+                    << Error::SecureStorageErrorCategory::get().message(static_cast<int>(dirErr)));
+                return dirErr; // Or a more specific error like FileOpenFailed because dir creation failed
+            }
+            SS_LOG_INFO("Successfully created directory: " << outputDir);
+        } else if (!Utils::FileUtil::pathExists(outputDir)) { // Double check after create attempt if pathExists initially was false
+             // This case handles if pathExists initially returned false but it was a file, not a dir
+             // and createDirectories correctly identified that. However, createDirectories itself should error out.
+             // This is more of a sanity check.
+            struct stat st;
+            if (stat(outputDir.c_str(), &st) == 0 && !S_ISDIR(st.st_mode)) {
+                 SS_LOG_ERROR("Output path '" << outputDir << "' exists but is not a directory.");
+                 return Error::Errc::OperationFailed;
+            }
+        }
+    }
+
+    std::string tempFilepath = filepath + TEMP_FILE_UTIL_SUFFIX; // Using defined suffix
 
     // Step 1: Write to temporary file
     { // Scope for ofstream

@@ -17,7 +17,7 @@ public:
     SecureStorageManagerImpl(
         const std::string& rootStoragePath, 
         const std::string& deviceSerialNumber,
-        FileWatcher::EventCallback fileWatcherCallback
+        FileWatcher::EventCallback fileWatcherCallback = nullptr // Optional callback for file watcher events
     )
         : secureStoreInstance(nullptr),
           fileWatcherInstance(nullptr),
@@ -87,7 +87,7 @@ public:
 SecureStorageManager::SecureStorageManager(
     const std::string& rootStoragePath,
     const std::string& deviceSerialNumber,
-    FileWatcher::EventCallback fileWatcherCallback
+    FileWatcher::EventCallback fileWatcherCallback = nullptr
 ) : m_impl(new SecureStorageManagerImpl(rootStoragePath, deviceSerialNumber, fileWatcherCallback)) {}
 
 SecureStorageManager::~SecureStorageManager() = default; // Needed for std::unique_ptr<PImpl>

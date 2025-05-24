@@ -257,7 +257,7 @@ TEST_F(FileUtilTest, GetDirectory) {
     ASSERT_EQ(FileUtil::getDirectory("relative/path/to/file.doc"), "relative/path/to");
     ASSERT_EQ(FileUtil::getDirectory("filename_only.cpp"), ""); // Or "." depending on desired behavior
     ASSERT_EQ(FileUtil::getDirectory("/a/b/c/"), "/a/b/c"); // Trailing slash
-    ASSERT_EQ(FileUtil::getDirectory("/"), ""); // Or "/" if preferred
+    ASSERT_EQ(FileUtil::getDirectory("/"), "/"); // Or "/" if preferred
     ASSERT_EQ(FileUtil::getDirectory(""), "");
 }
 

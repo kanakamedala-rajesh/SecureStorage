@@ -58,6 +58,7 @@ FetchContent_MakeAvailable(googletest)
 # --- Project Structure ---
 add_subdirectory(src)
 add_subdirectory(tests)
+add_subdirectory(examples)
 
 # --- Installation (Optional, implemented later) ---
 # include(GNUInstallDirs)
