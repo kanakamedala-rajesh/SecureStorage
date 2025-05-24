@@ -80,12 +80,12 @@ add_subdirectory(examples)
 #   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/SecureStorage
 # )
 
-# --- Doxygen (Optional, can be added later) ---
+# --- Doxygen Documentation ---
 find_package(Doxygen)
 if(DOXYGEN_FOUND)
     set(DOXYGEN_PROJECT_VERSION "${PROJECT_VERSION}") # Use project version from CMake
     set(DOXYGEN_INPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/examples")
-    set(DOXYGEN_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/docs/doxygen_html") # Output relative to build dir
+    set(DOXYGEN_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/docs/") # Output relative to build dir
     set(DOXYFILE_IN "${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in") # Assuming Doxyfile.in is in root
     set(DOXYFILE_OUT "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile")
 
@@ -105,8 +105,15 @@ if(DOXYGEN_FOUND)
         VERBATIM)
     message(STATUS "Doxygen target added. Output will be in ${DOXYGEN_OUTPUT_DIR}")
 else()
-    message(STATUS "Doxygen not found. Documentation will not be generated.")
+    message(WARNING "Doxygen not found. Documentation will not be generated.")
 endif()
+
+# --- Installation Rules ---
+# Install LICENSE and README.md
+install(FILES LICENSE README.md docs/important_notes.md docs/key_design_points.md DESTINATION share/doc/${PROJECT_NAME})
+
+# Include CPack for packaging if desired later (optional for now)
+# include(CPack)
 
 message(STATUS "Mbed TLS source dir: ${mbedtls_SOURCE_DIR}")
 message(STATUS "Mbed TLS binary dir: ${mbedtls_BINARY_DIR}")

@@ -16,3 +16,9 @@ target_link_libraries(ss_storage PUBLIC
 )
 
 target_compile_features(ss_storage PUBLIC cxx_std_11)
+
+# Install public headers for ss_storage
+install(FILES
+    SecureStore.h
+    DESTINATION include/storage # Installs to <prefix>/include/storage
+)

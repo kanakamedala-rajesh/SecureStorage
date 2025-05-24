@@ -17,3 +17,10 @@ target_link_libraries(ss_crypto PUBLIC
 )
 
 target_compile_features(ss_crypto PUBLIC cxx_std_11)
+
+# Install public headers for ss_crypto
+install(FILES
+    Encryptor.h
+    KeyProvider.h
+    DESTINATION include/crypto # Installs to <prefix>/include/crypto
+)

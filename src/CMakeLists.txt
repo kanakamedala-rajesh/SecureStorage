@@ -41,3 +41,20 @@ target_compile_features(SecureStorage_lib PUBLIC cxx_std_11)
 # target_sources(SecureStorage_lib PRIVATE
 #    SecureStorageManager.cpp # Example
 # )
+
+# --- Installation Rules for SecureStorage_lib and its headers ---
+install(TARGETS SecureStorage_lib
+    EXPORT ${PROJECT_NAME}Targets # Exports the target for use by other CMake projects
+    ARCHIVE DESTINATION lib       # For static libraries (.a, .lib)
+    LIBRARY DESTINATION lib       # For shared libraries (.so, .dll)
+    RUNTIME DESTINATION bin       # For executables or DLLs on Windows
+)
+
+# Install public headers from the src directory itself
+install(FILES
+    SecureStorageManager.h
+    DESTINATION include # Installs to <prefix>/include
+)
+
+# Note: Headers from subdirectories (crypto, storage, utils, file_watcher)
+# should be installed by their respective CMakeLists.txt files into subfolders of 'include'.

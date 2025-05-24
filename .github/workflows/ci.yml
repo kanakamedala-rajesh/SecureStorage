@@ -73,3 +73,200 @@ jobs:
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest --build-config ${{ matrix.build_type }}
+
+    - name: Install project
+      run: cmake --install ${{ steps.strings.outputs.build-output-dir }} --prefix ${{ github.workspace }}/build/install
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-${{ matrix.os }}-${{ matrix.c_compiler }}-${{ matrix.build_type }}
+        path: ${{ github.workspace }}/build/install/ # Uploads contents of 'install' directory
+
+  build-docs:
+    name: Build Doxygen Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive' # Checkout submodules if your project uses them
+
+      - name: Install Doxygen and Graphviz
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen graphviz
+
+      - name: Configure CMake
+        run: cmake -B ${{ github.workspace }}/build -S ${{ github.workspace }} -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Doxygen target
+        run: cmake --build ${{ github.workspace }}/build --target doxygen
+
+      - name: Upload Doxygen HTML
+        uses: actions/upload-artifact@v4
+        with:
+          name: doxygen-html-docs
+          path: ${{ github.workspace }}/build/docs/html/ # Adjust path if your Doxyfile output is different
+
+  release:
+    name: Create Release and Upload Assets
+    if: startsWith(github.ref, 'refs/tags/v') # Only run on version tags like v1.0.0
+    needs: [build, build-docs] # Depends on successful build and docs generation
+    runs-on: ubuntu-latest # Use ubuntu-latest for packaging, can be windows-latest if you prefer Windows packages
+    permissions:
+      contents: write # Required to create a release and upload assets
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Set up MSYS2 (for Windows-specific tools like zip, if needed on Linux runner)
+        if: runner.os == 'Linux' # Example if you need zip or other tools
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64 # or UCRT64
+          update: true
+          install: zip # Example: install zip utility
+
+      # Download all build artifacts from the 'build' job
+      # This assumes your 'build' job uploads artifacts for each OS/compiler combination
+      # You'll need to adjust this if your build job structure is different
+      - name: Download Linux GCC Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-ubuntu-latest-gcc-Release # Match artifact name from build job
+          path: build-artifacts/linux-gcc
+
+      - name: Download Linux Clang Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-ubuntu-latest-clang-Release # Match artifact name from build job
+          path: build-artifacts/linux-clang
+
+      - name: Download Windows MSVC Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-windows-latest-cl-Release # Match artifact name from build job
+          path: build-artifacts/windows-msvc
+
+      - name: Download Doxygen HTML Docs
+        uses: actions/download-artifact@v4
+        with:
+          name: doxygen-html-docs
+          path: doxygen-docs
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: Create Release Packages
+        run: |
+          # Create a directory for release assets
+          mkdir release_assets
+
+          # Package Doxygen docs
+          zip -r release_assets/SecureStorage-docs-${{ env.VERSION }}.zip doxygen-docs/
+          echo "Packaged Doxygen documentation."
+
+          # Package Linux GCC build
+          # Assumes 'build-artifacts/linux-gcc/' now contains the installed files (bin/, lib/, include/)
+          if [ -d "build-artifacts/linux-gcc" ] && [ "$(ls -A build-artifacts/linux-gcc)" ]; then
+            tar -czvf release_assets/SecureStorage-linux-gcc-${{ env.VERSION }}.tar.gz -C build-artifacts/linux-gcc .
+            echo "Packaged Linux GCC build."
+          else
+            echo "Linux GCC build artifact not found or is empty in build-artifacts/linux-gcc/."
+          fi
+
+          # Package Linux Clang build
+          if [ -d "build-artifacts/linux-clang" ] && [ "$(ls -A build-artifacts/linux-clang)" ]; then
+            tar -czvf release_assets/SecureStorage-linux-clang-${{ env.VERSION }}.tar.gz -C build-artifacts/linux-clang .
+            echo "Packaged Linux Clang build."
+          else
+            echo "Linux Clang build artifact not found or is empty in build-artifacts/linux-clang/."
+          fi
+
+          # Package Windows MSVC build
+          if [ -d "build-artifacts/windows-msvc" ] && [ "$(ls -A build-artifacts/windows-msvc)" ]; then
+            (cd build-artifacts/windows-msvc && zip -r ../../release_assets/SecureStorage-windows-msvc-${{ env.VERSION }}.zip .)
+            echo "Packaged Windows MSVC build."
+          else
+            echo "Windows MSVC build artifact not found or is empty in build-artifacts/windows-msvc/."
+          fi
+          ls -R release_assets
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref_name }}
+          body: |
+            Release of version ${{ github.ref_name }}.
+            Please find the attached assets for different platforms and the API documentation.
+          draft: false
+          prerelease: false # Set to true if this is a pre-release
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release_assets/SecureStorage-docs-${{ env.VERSION }}.zip
+          asset_name: SecureStorage-docs-${{ env.VERSION }}.zip
+          asset_content_type: application/zip
+
+      - name: Upload Linux GCC Asset
+        if: success() && env.VERSION # Ensure previous steps succeeded and version is set
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release_assets/SecureStorage-linux-gcc-${{ env.VERSION }}.tar.gz
+          asset_name: SecureStorage-linux-gcc-${{ env.VERSION }}.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload Linux Clang Asset
+        if: success() && env.VERSION
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release_assets/SecureStorage-linux-clang-${{ env.VERSION }}.tar.gz
+          asset_name: SecureStorage-linux-clang-${{ env.VERSION }}.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload Windows MSVC Asset
+        if: success() && env.VERSION
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release_assets/SecureStorage-windows-msvc-${{ env.VERSION }}.zip
+          asset_name: SecureStorage-windows-msvc-${{ env.VERSION }}.zip
+          asset_content_type: application/zip
+
+# This part of the original workflow needs to be adjusted to upload artifacts
+# that the 'release' job can consume.
+# Specifically, after building and installing, it should upload the 'install' directory.
+# Example of how to modify the build job to upload artifacts:
+#
+#       - name: Install project (after build)
+#         run: cmake --install ${{ github.workspace }}/build --prefix ${{ github.workspace }}/build/install
+#
+#       - name: Upload build artifact
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: build-${{ matrix.os }}-${{ matrix.c_compiler }}-${{ matrix.build_type }}
+#           path: ${{ github.workspace }}/build/install/
+#
+# You'll need to add these steps (or similar) to the end of your 'build' job's steps list.
+# Ensure the 'name' in 'upload-artifact' matches what 'download-artifact' expects in the 'release' job.
+# Also, ensure the 'path' points to the directory created by 'cmake --install'.

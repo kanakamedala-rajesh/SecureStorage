@@ -12,3 +12,11 @@ target_include_directories(ss_utils PUBLIC
 # target_link_libraries(ss_utils PUBLIC mbedcrypto)
 
 target_compile_features(ss_utils PUBLIC cxx_std_11)
+
+# Install public headers for ss_utils
+install(FILES
+    Error.h
+    FileUtil.h
+    Logger.h
+    DESTINATION include/utils # Installs to <prefix>/include/utils
+)

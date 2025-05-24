@@ -8,13 +8,13 @@
 #ifdef _WIN32
 // Windows-specific includes
 #include <io.h> // For _commit (Windows equivalent of fsync)
+#include <windows.h> // For CreateDirectory and other Windows-specific file operations
 #else
 // POSIX-specific includes
 #include <unistd.h> // For fsync
+#include <dirent.h> // For directory listings
 #endif
 
-// For directory listing (POSIX)
-#include <dirent.h>
 #include <sys/types.h>
 
 namespace SecureStorage {
@@ -286,43 +286,71 @@ Error::Errc FileUtil::createDirectories(const std::string& path) {
 
 Error::Errc FileUtil::listDirectory(const std::string& directoryPath, std::vector<std::string>& files) {
     files.clear();
-    if (directoryPath.empty()) {
+    if (directoryPath.empty())
+    {
         SS_LOG_ERROR("Directory path for listing is empty.");
         return Error::Errc::InvalidArgument;
     }
 
-    DIR* dir = opendir(directoryPath.c_str());
-    if (dir == nullptr) {
+#ifdef _WIN32
+    WIN32_FIND_DATA findFileData;
+    HANDLE hFind = FindFirstFile((directoryPath + "\\*").c_str(), &findFileData);
+    if (hFind == INVALID_HANDLE_VALUE)
+    {
+        SS_LOG_ERROR("Failed to open directory: " << directoryPath << " - Error: " << GetLastError());
+        return Error::Errc::FileOpenFailed;
+    }
+    do
+    {
+        std::string name = findFileData.cFileName;
+        if (name != "." && name != "..")
+        {
+            files.push_back(name);
+        }
+    } while (FindNextFile(hFind, &findFileData) != 0);
+    FindClose(hFind);
+#else
+    DIR *dir = opendir(directoryPath.c_str());
+    if (dir == nullptr)
+    {
         SS_LOG_ERROR("Failed to open directory: " << directoryPath << " - " << strerror(errno));
         return Error::Errc::FileOpenFailed; // Or PathNotFound
     }
 
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != nullptr)
+    {
         std::string name = entry->d_name;
-        if (name == "." || name == "..") {
+        if (name == "." || name == "..")
+        {
             continue;
         }
 
         // Check if it's a regular file (optional, could also list directories)
         std::string fullEntryPath = directoryPath;
-        if (fullEntryPath.back() != '/') {
+        if (fullEntryPath.back() != '/')
+        {
             fullEntryPath += '/';
         }
         fullEntryPath += name;
 
         struct stat entry_stat;
-        if (stat(fullEntryPath.c_str(), &entry_stat) == 0) {
-            if (S_ISREG(entry_stat.st_mode)) { // Check if it's a regular file
+        if (stat(fullEntryPath.c_str(), &entry_stat) == 0)
+        {
+            if (S_ISREG(entry_stat.st_mode))
+            { // Check if it's a regular file
                 files.push_back(name);
             }
-        } else {
+        }
+        else
+        {
             SS_LOG_WARN("Failed to stat entry: " << fullEntryPath << " - " << strerror(errno));
             // Decide whether to continue or return error
         }
-    }
 
-    closedir(dir);
+    } // End of while loop
+    closedir(dir); // Moved closedir outside the loop
+#endif
     SS_LOG_DEBUG("Listed " << files.size() << " regular files in directory: " << directoryPath);
     return Error::Errc::Success;
 }

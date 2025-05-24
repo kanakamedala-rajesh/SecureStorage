@@ -77,6 +77,24 @@ offline.
     ```
     The documentation will typically be generated in `build/docs/doxygen_html/index.html`.
 
+## Continuous Integration & Releases
+
+This project uses GitHub Actions for Continuous Integration (CI). The CI pipeline, defined in `.github/workflows/ci.yml`, automatically performs the following:
+
+*   **Builds on Multiple Platforms:** Compiles the `SecureStorage` library and its examples on:
+    *   Windows (latest, MSVC)
+    *   Linux (latest, GCC)
+    *   Linux (latest, Clang)
+*   **Runs Unit Tests:** Executes the test suite on all supported platforms.
+*   **Generates Doxygen Documentation:** Builds the HTML Doxygen documentation.
+*   **Creates Releases:** When a tag matching the pattern `v*` (e.g., `v1.0.0`, `v1.2.3-beta`) is pushed:
+    *   Downloads build artifacts (binaries for each platform) and Doxygen documentation.
+    *   Packages these into `.zip` (for Windows and docs) and `.tar.gz` (for Linux) archives.
+    *   Creates a GitHub Release with the tag.
+    *   Uploads the packaged archives as release assets.
+
+The build artifacts (installable packages) and Doxygen documentation are made available with each release on GitHub.
+
 ## Basic Usage (`SecureStorageManager`)
 
 The primary interface to the library is the `SecureStorage::SecureStorageManager` class.

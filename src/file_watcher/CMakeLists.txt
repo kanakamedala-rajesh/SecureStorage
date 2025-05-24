@@ -18,3 +18,9 @@ target_link_libraries(ss_file_watcher PUBLIC
 )
 
 target_compile_features(ss_file_watcher PUBLIC cxx_std_11)
+
+# Install public headers for ss_file_watcher
+install(FILES
+    FileWatcher.h
+    DESTINATION include/file_watcher # Installs to <prefix>/include/file_watcher
+)
