@@ -1,88 +1,175 @@
-# This starter workflow is for a CMake project running on multiple platforms. There is a different starter workflow if you just want a single platform.
-# See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-single-platform.yml
 name: SecureStorage Build on multiple platforms
 
 on:
   push:
-    branches: [ "main" ]
+    branches: 
+      - '*' # Trigger on pushes to all branches
+    tags:
+      - 'v*' # Trigger release job on version tags
   pull_request:
-    branches: [ "main" ]
+    branches:
+      - '*' # Trigger on pull requests to all branches
+  workflow_dispatch: # Allows manual triggering
+    inputs:
+      test_tag_name:
+        description: 'Tag name for test release (e.g., v0.0.0-test). If empty, a default test tag is used.'
+        required: false
+        default: 'v0.0.0-manual-test'
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-
+  build: # Linux builds
+    name: Build Linux (${{ matrix.c_compiler }})
+    runs-on: ubuntu-latest
     strategy:
-      # Set fail-fast to false to ensure that feedback is delivered for all matrix combinations. Consider changing this to true when your workflow is stable.
       fail-fast: false
-
-      # Set up a matrix to run the following 3 configurations:
-      # 1. <Windows, Release, latest MSVC compiler toolchain on the default runner image, default generator>
-      # 2. <Linux, Release, latest GCC compiler toolchain on the default runner image, default generator>
-      # 3. <Linux, Release, latest Clang compiler toolchain on the default runner image, default generator>
-      #
-      # To add more build types (Release, Debug, RelWithDebInfo, etc.) customize the build_type list.
       matrix:
-        os: [ubuntu-latest, windows-latest]
         build_type: [Release]
-        c_compiler: [gcc, clang, cl]
+        c_compiler: [gcc, clang]
         include:
-          - os: windows-latest
-            c_compiler: cl
-            cpp_compiler: cl
-          - os: ubuntu-latest
-            c_compiler: gcc
+          - c_compiler: gcc
             cpp_compiler: g++
-          - os: ubuntu-latest
-            c_compiler: clang
+          - c_compiler: clang
             cpp_compiler: clang++
-        exclude:
-          - os: windows-latest
-            c_compiler: gcc
-          - os: windows-latest
-            c_compiler: clang
-          - os: ubuntu-latest
-            c_compiler: cl
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 
 
     - name: Set reusable strings
-      # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
       id: strings
       shell: bash
       run: |
-        echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+        echo "build-output-dir=${{ github.workspace }}/build-linux-${{ matrix.c_compiler }}" >> "$GITHUB_OUTPUT"
+        echo "install-output-dir=${{ github.workspace }}/install-linux-${{ matrix.c_compiler }}" >> "$GITHUB_OUTPUT"
 
     - name: Configure CMake
-      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
-      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DCMAKE_INSTALL_PREFIX=${{ steps.strings.outputs.install-output-dir }}
         -S ${{ github.workspace }}
 
     - name: Build
-      # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
 
     - name: Test
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
-      # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest --build-config ${{ matrix.build_type }}
 
     - name: Install project
-      run: cmake --install ${{ steps.strings.outputs.build-output-dir }} --prefix ${{ github.workspace }}/build/install
+      run: cmake --install ${{ steps.strings.outputs.build-output-dir }} --prefix ${{ steps.strings.outputs.install-output-dir }}
 
-    - name: Upload build artifact
+    - name: Upload Linux build artifact
       uses: actions/upload-artifact@v4
       with:
-        name: build-${{ matrix.os }}-${{ matrix.c_compiler }}-${{ matrix.build_type }}
-        path: ${{ github.workspace }}/build/install/ # Uploads contents of 'install' directory
+        name: build-linux-${{ matrix.c_compiler }}-${{ matrix.build_type }}
+        path: ${{ steps.strings.outputs.install-output-dir }}/
 
+  build_android:
+    name: Build Android (${{ matrix.config.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: "api21-arm64-v8a"
+            api_level: 21 # This will be the effective minimum API for system headers with NDK r25c
+            abi: "arm64-v8a"
+            ndk_version_package: "ndk;25.2.9519653" # NDK r25c
+            ndk_folder_name: "25.2.9519653"        
+            cpp_stl: "c++_shared"
+          - name: "api18-armeabi-v7a"
+            api_level: 18 # NDK r25c will use its min (19) for headers, but can target 18 for manifest/compatibility
+            abi: "armeabi-v7a"
+            ndk_version_package: "ndk;25.2.9519653" # Use the same NDK r25c
+            ndk_folder_name: "25.2.9519653"       
+            cpp_stl: "c++_shared" 
+        build_type: [Release]
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Set reusable strings
+      id: strings
+      shell: bash
+      run: |
+        echo "build-output-dir=${{ github.workspace }}/build-android-${{ matrix.config.name }}" >> "$GITHUB_OUTPUT"
+        echo "install-output-dir=${{ github.workspace }}/install-android-${{ matrix.config.name }}" >> "$GITHUB_OUTPUT"
+
+    - name: Setup Android SDK & NDK
+      id: setup_ndk 
+      uses: android-actions/setup-android@v3
+      with:
+        packages: "${{ matrix.config.ndk_version_package }}" 
+
+    - name: Configure CMake for Android
+      shell: bash
+      env:
+        ANDROID_SDK_ROOT_ENV: ${{ env.ANDROID_SDK_ROOT }} 
+      run: |
+        EXPECTED_NDK_FOLDER_NAME="${{ matrix.config.ndk_folder_name }}"
+        EFFECTIVE_NDK_HOME="$ANDROID_SDK_ROOT_ENV/ndk/$EXPECTED_NDK_FOLDER_NAME"
+
+        echo "DEBUG: Matrix NDK folder name: $EXPECTED_NDK_FOLDER_NAME"
+        echo "DEBUG: ANDROID_SDK_ROOT_ENV used: $ANDROID_SDK_ROOT_ENV"
+        echo "Constructed NDK path: $EFFECTIVE_NDK_HOME"
+        
+        if [ -z "$ANDROID_SDK_ROOT_ENV" ]; then
+            echo "Error: ANDROID_SDK_ROOT_ENV is not set. Android SDK setup likely failed."
+            exit 1
+        fi
+        if [ ! -d "$EFFECTIVE_NDK_HOME" ]; then
+          echo "Error: Constructed NDK path does not exist: '$EFFECTIVE_NDK_HOME'"
+          echo "Listing $ANDROID_SDK_ROOT_ENV/ndk/ to see available NDKs (if any):"
+          ls -la "$ANDROID_SDK_ROOT_ENV/ndk/" || echo "NDK directory $ANDROID_SDK_ROOT_ENV/ndk/ not found or ls failed."
+          exit 1
+        fi
+        
+        if [ ! -f "$EFFECTIVE_NDK_HOME/source.properties" ]; then
+          echo "Error: Android NDK at $EFFECTIVE_NDK_HOME does not appear valid (missing source.properties)."
+          echo "Listing contents of $EFFECTIVE_NDK_HOME:"
+          ls -la "$EFFECTIVE_NDK_HOME"
+          exit 1
+        fi
+
+        echo "Final NDK path for CMake: $EFFECTIVE_NDK_HOME"
+        cmake -B ${{ steps.strings.outputs.build-output-dir }} \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+          -DCMAKE_INSTALL_PREFIX=${{ steps.strings.outputs.install-output-dir }} \
+          -DCMAKE_TOOLCHAIN_FILE=$EFFECTIVE_NDK_HOME/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=${{ matrix.config.abi }} \
+          -DANDROID_PLATFORM=android-${{ matrix.config.api_level }} \
+          -DANDROID_NDK=$EFFECTIVE_NDK_HOME \
+          -DANDROID_STL=${{ matrix.config.cpp_stl }} \
+          -S ${{ github.workspace }}
+
+    - name: Build Android
+      shell: bash
+      run: |
+        cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+
+    - name: Install Android project
+      shell: bash
+      run: |
+        cmake --install ${{ steps.strings.outputs.build-output-dir }} --prefix ${{ steps.strings.outputs.install-output-dir }}
+
+    - name: Upload Android build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-android-${{ matrix.config.name }}-${{ matrix.build_type }}
+        path: ${{ steps.strings.outputs.install-output-dir }}/
+  
   build-docs:
     name: Build Doxygen Documentation
     runs-on: ubuntu-latest
@@ -90,7 +177,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: 'recursive' # Checkout submodules if your project uses them
+          submodules: 'recursive'
+          fetch-depth: 0 
 
       - name: Install Doxygen and Graphviz
         run: |
@@ -98,102 +186,135 @@ jobs:
           sudo apt-get install -y doxygen graphviz
 
       - name: Configure CMake
-        run: cmake -B ${{ github.workspace }}/build -S ${{ github.workspace }} -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B ${{ github.workspace }}/build-docs -S ${{ github.workspace }} -DCMAKE_BUILD_TYPE=Release
 
       - name: Build Doxygen target
-        run: cmake --build ${{ github.workspace }}/build --target doxygen
+        run: cmake --build ${{ github.workspace }}/build-docs --target doxygen
 
       - name: Upload Doxygen HTML
         uses: actions/upload-artifact@v4
         with:
           name: doxygen-html-docs
-          path: ${{ github.workspace }}/build/docs/html/ # Adjust path if your Doxyfile output is different
+          path: ${{ github.workspace }}/build-docs/docs/html/
 
   release:
     name: Create Release and Upload Assets
-    if: startsWith(github.ref, 'refs/tags/v') # Only run on version tags like v1.0.0
-    needs: [build, build-docs] # Depends on successful build and docs generation
-    runs-on: ubuntu-latest # Use ubuntu-latest for packaging, can be windows-latest if you prefer Windows packages
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: [build, build_android, build-docs]
+    runs-on: ubuntu-latest
     permissions:
-      contents: write # Required to create a release and upload assets
+      contents: write 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: 'recursive'
+          fetch-depth: 0 
 
-      - name: Set up MSYS2 (for Windows-specific tools like zip, if needed on Linux runner)
-        if: runner.os == 'Linux' # Example if you need zip or other tools
+      - name: Set up MSYS2 (for zip, tar on Linux runner)
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64 # or UCRT64
+          msystem: MINGW64
           update: true
-          install: zip # Example: install zip utility
+          install: zip tar gh 
 
-      # Download all build artifacts from the 'build' job
-      # This assumes your 'build' job uploads artifacts for each OS/compiler combination
-      # You'll need to adjust this if your build job structure is different
       - name: Download Linux GCC Build Artifact
         uses: actions/download-artifact@v4
         with:
-          name: build-ubuntu-latest-gcc-Release # Match artifact name from build job
-          path: build-artifacts/linux-gcc
-
+          name: build-linux-gcc-Release
+          path: build-artifacts/linux-gcc-Release
       - name: Download Linux Clang Build Artifact
         uses: actions/download-artifact@v4
         with:
-          name: build-ubuntu-latest-clang-Release # Match artifact name from build job
-          path: build-artifacts/linux-clang
-
-      - name: Download Windows MSVC Build Artifact
+          name: build-linux-clang-Release
+          path: build-artifacts/linux-clang-Release
+      - name: Download Android API21 arm64-v8a Build Artifact
         uses: actions/download-artifact@v4
         with:
-          name: build-windows-latest-cl-Release # Match artifact name from build job
-          path: build-artifacts/windows-msvc
-
+          name: build-android-api21-arm64-v8a-Release
+          path: build-artifacts/android-api21-arm64-v8a-Release
+      - name: Download Android API18 armeabi-v7a Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-android-api18-armeabi-v7a-Release 
+          path: build-artifacts/android-api18-armeabi-v7a-Release
       - name: Download Doxygen HTML Docs
         uses: actions/download-artifact@v4
         with:
           name: doxygen-html-docs
           path: doxygen-docs
 
-      - name: Get version from tag
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+      - name: Determine Version and Release Settings
+        id: version_settings
+        shell: bash
+        run: |
+          IS_MANUAL_DISPATCH="${{ github.event_name == 'workflow_dispatch' }}"
+          echo "IS_MANUAL_DISPATCH: $IS_MANUAL_DISPATCH"
+
+          if [[ "$IS_MANUAL_DISPATCH" == "true" ]]; then
+            VERSION_NAME="${{ github.event.inputs.test_tag_name }}"
+            if [[ -z "$VERSION_NAME" ]]; then
+              VERSION_NAME="v0.0.0-manual-test-$(date +%Y%m%d%H%M%S)"
+            fi
+            DRAFT_RELEASE="true"
+            PRERELEASE_FLAG="true" 
+            RELEASE_NAME_PREFIX="Test Release: "
+            echo "Manual dispatch detected. Using test version: $VERSION_NAME"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION_NAME="${{ github.ref_name }}"
+            DRAFT_RELEASE="false"
+            PRERELEASE_FLAG="false" 
+            if [[ "$VERSION_NAME" == *-alpha* || "$VERSION_NAME" == *-beta* || "$VERSION_NAME" == *-rc* ]]; then
+              PRERELEASE_FLAG="true"
+            fi
+            RELEASE_NAME_PREFIX="Release: "
+            echo "Tag push detected. Using version: $VERSION_NAME"
+          else
+            echo "ERROR: Not a 'v*' tag push or manual dispatch. This job should not have run under these conditions."
+            exit 1 
+          fi
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "DRAFT_RELEASE=$DRAFT_RELEASE" >> "$GITHUB_ENV"
+          echo "PRERELEASE_FLAG=$PRERELEASE_FLAG" >> "$GITHUB_ENV"
+          echo "FINAL_RELEASE_NAME=${RELEASE_NAME_PREFIX}${VERSION_NAME}" >> "$GITHUB_ENV"
 
       - name: Create Release Packages
+        shell: bash
+        env:
+          VERSION_NAME: ${{ env.VERSION_NAME }}
         run: |
-          # Create a directory for release assets
-          mkdir release_assets
+          mkdir -p release_assets
+          VERSION_TAG_FOR_FILE=$(echo "$VERSION_NAME" | sed 's/[^a-zA-Z0-9._-]/_/g')
+          echo "Packaging for version: $VERSION_NAME (Filename suffix: $VERSION_TAG_FOR_FILE)"
 
-          # Package Doxygen docs
-          zip -r release_assets/SecureStorage-docs-${{ env.VERSION }}.zip doxygen-docs/
-          echo "Packaged Doxygen documentation."
+          if [ -d "doxygen-docs" ] && [ "$(ls -A doxygen-docs)" ]; then
+            zip -r release_assets/SecureStorage-docs-${VERSION_TAG_FOR_FILE}.zip doxygen-docs/
+            echo "Packaged Doxygen documentation."
+          else echo "Doxygen docs not found or empty."; fi
 
-          # Package Linux GCC build
-          # Assumes 'build-artifacts/linux-gcc/' now contains the installed files (bin/, lib/, include/)
-          if [ -d "build-artifacts/linux-gcc" ] && [ "$(ls -A build-artifacts/linux-gcc)" ]; then
-            tar -czvf release_assets/SecureStorage-linux-gcc-${{ env.VERSION }}.tar.gz -C build-artifacts/linux-gcc .
+          if [ -d "build-artifacts/linux-gcc-Release" ] && [ "$(ls -A build-artifacts/linux-gcc-Release)" ]; then
+            tar -czvf release_assets/SecureStorage-linux-gcc-${VERSION_TAG_FOR_FILE}.tar.gz -C build-artifacts/linux-gcc-Release .
             echo "Packaged Linux GCC build."
-          else
-            echo "Linux GCC build artifact not found or is empty in build-artifacts/linux-gcc/."
-          fi
+          else echo "Linux GCC build artifact not found or is empty."; fi
 
-          # Package Linux Clang build
-          if [ -d "build-artifacts/linux-clang" ] && [ "$(ls -A build-artifacts/linux-clang)" ]; then
-            tar -czvf release_assets/SecureStorage-linux-clang-${{ env.VERSION }}.tar.gz -C build-artifacts/linux-clang .
+          if [ -d "build-artifacts/linux-clang-Release" ] && [ "$(ls -A build-artifacts/linux-clang-Release)" ]; then
+            tar -czvf release_assets/SecureStorage-linux-clang-${VERSION_TAG_FOR_FILE}.tar.gz -C build-artifacts/linux-clang-Release .
             echo "Packaged Linux Clang build."
-          else
-            echo "Linux Clang build artifact not found or is empty in build-artifacts/linux-clang/."
-          fi
+          else echo "Linux Clang build artifact not found or is empty."; fi
+          
+          if [ -d "build-artifacts/android-api21-arm64-v8a-Release" ] && \
+             [ "$(ls -A build-artifacts/android-api21-arm64-v8a-Release)" ]; then
+            tar -czvf release_assets/SecureStorage-android-api21-arm64-v8a-${VERSION_TAG_FOR_FILE}.tar.gz -C build-artifacts/android-api21-arm64-v8a-Release .
+            echo "Packaged Android API21 arm64-v8a build."
+          else echo "Android API21 arm64-v8a build artifact not found or empty."; fi
 
-          # Package Windows MSVC build
-          if [ -d "build-artifacts/windows-msvc" ] && [ "$(ls -A build-artifacts/windows-msvc)" ]; then
-            (cd build-artifacts/windows-msvc && zip -r ../../release_assets/SecureStorage-windows-msvc-${{ env.VERSION }}.zip .)
-            echo "Packaged Windows MSVC build."
-          else
-            echo "Windows MSVC build artifact not found or is empty in build-artifacts/windows-msvc/."
-          fi
+          if [ -d "build-artifacts/android-api18-armeabi-v7a-Release" ] && \
+             [ "$(ls -A build-artifacts/android-api18-armeabi-v7a-Release)" ]; then
+            tar -czvf release_assets/SecureStorage-android-api18-armeabi-v7a-${VERSION_TAG_FOR_FILE}.tar.gz -C build-artifacts/android-api18-armeabi-v7a-Release .
+            echo "Packaged Android API18 armeabi-v7a build."
+          else echo "Android API18 armeabi-v7a build artifact not found or empty."; fi
+          
+          echo "Listing packaged assets:"
           ls -R release_assets
 
       - name: Create GitHub Release
@@ -202,71 +323,41 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref_name }}
+          tag_name: ${{ env.VERSION_NAME }} 
+          release_name: ${{ env.FINAL_RELEASE_NAME }}
           body: |
-            Release of version ${{ github.ref_name }}.
+            Automated release for version ${{ env.VERSION_NAME }}.
+            This is a ${{ env.DRAFT_RELEASE == 'true' && 'DRAFT' || 'FINAL' }} release.
+            Prerelease status: ${{ env.PRERELEASE_FLAG }}.
             Please find the attached assets for different platforms and the API documentation.
-          draft: false
-          prerelease: false # Set to true if this is a pre-release
+          draft: ${{ env.DRAFT_RELEASE }}
+          prerelease: ${{ env.PRERELEASE_FLAG }}
 
-      - name: Upload Release Assets
-        uses: actions/upload-release-asset@v1
+      - name: Upload Release Assets (using gh cli)
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./release_assets/SecureStorage-docs-${{ env.VERSION }}.zip
-          asset_name: SecureStorage-docs-${{ env.VERSION }}.zip
-          asset_content_type: application/zip
+          VERSION_NAME: ${{ env.VERSION_NAME }}
+        run: |
+          echo "Target release tag for asset upload: $VERSION_NAME"
+          if [ -z "${{ steps.create_release.outputs.upload_url }}" ]; then
+            echo "Upload URL from create-release step is empty. Will rely on gh release upload to find tag $VERSION_NAME."
+          fi
 
-      - name: Upload Linux GCC Asset
-        if: success() && env.VERSION # Ensure previous steps succeeded and version is set
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./release_assets/SecureStorage-linux-gcc-${{ env.VERSION }}.tar.gz
-          asset_name: SecureStorage-linux-gcc-${{ env.VERSION }}.tar.gz
-          asset_content_type: application/gzip
+          ASSET_COUNT=0
+          if [ -d "./release_assets" ] && [ "$(ls -A ./release_assets)" ]; then
+            for asset_path in ./release_assets/*; do
+              if [ -f "$asset_path" ]; then
+                asset_name=$(basename "$asset_path")
+                echo "Uploading $asset_name to release tag $VERSION_NAME..."
+                gh release upload "$VERSION_NAME" "$asset_path" --clobber
+                ASSET_COUNT=$((ASSET_COUNT + 1))
+              fi
+            done
+          fi
 
-      - name: Upload Linux Clang Asset
-        if: success() && env.VERSION
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./release_assets/SecureStorage-linux-clang-${{ env.VERSION }}.tar.gz
-          asset_name: SecureStorage-linux-clang-${{ env.VERSION }}.tar.gz
-          asset_content_type: application/gzip
-
-      - name: Upload Windows MSVC Asset
-        if: success() && env.VERSION
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./release_assets/SecureStorage-windows-msvc-${{ env.VERSION }}.zip
-          asset_name: SecureStorage-windows-msvc-${{ env.VERSION }}.zip
-          asset_content_type: application/zip
-
-# This part of the original workflow needs to be adjusted to upload artifacts
-# that the 'release' job can consume.
-# Specifically, after building and installing, it should upload the 'install' directory.
-# Example of how to modify the build job to upload artifacts:
-#
-#       - name: Install project (after build)
-#         run: cmake --install ${{ github.workspace }}/build --prefix ${{ github.workspace }}/build/install
-#
-#       - name: Upload build artifact
-#         uses: actions/upload-artifact@v4
-#         with:
-#           name: build-${{ matrix.os }}-${{ matrix.c_compiler }}-${{ matrix.build_type }}
-#           path: ${{ github.workspace }}/build/install/
-#
-# You'll need to add these steps (or similar) to the end of your 'build' job's steps list.
-# Ensure the 'name' in 'upload-artifact' matches what 'download-artifact' expects in the 'release' job.
-# Also, ensure the 'path' points to the directory created by 'cmake --install'.
+          if [ "$ASSET_COUNT" -eq 0 ]; then
+            echo "No assets found in ./release_assets/ to upload."
+          else
+            echo "Uploaded $ASSET_COUNT assets to release $VERSION_NAME."
+          fi
