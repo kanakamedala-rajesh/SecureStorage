@@ -2,9 +2,9 @@
 #define SS_FILE_UTIL_H
 
 #include "Error.h" // For SecureStorage::Error::Errc
+#include <fstream> // For std::ifstream, std::ofstream
 #include <string>
 #include <vector>
-#include <fstream> // For std::ifstream, std::ofstream
 
 namespace SecureStorage {
 namespace Utils {
@@ -34,7 +34,8 @@ public:
      * @param data The byte vector containing data to write.
      * @return SecureStorage::Error::Errc::Success on success, or an error code on failure.
      */
-    static Error::Errc atomicWriteFile(const std::string& filepath, const std::vector<unsigned char>& data);
+    static Error::Errc atomicWriteFile(const std::string &filepath,
+                                       const std::vector<unsigned char> &data);
 
     /**
      * @brief Reads the entire content of a file into a byte vector.
@@ -43,7 +44,7 @@ public:
      * @param[out] data The byte vector to store the file's content.
      * @return SecureStorage::Error::Errc::Success on success, or an error code on failure.
      */
-    static Error::Errc readFile(const std::string& filepath, std::vector<unsigned char>& data);
+    static Error::Errc readFile(const std::string &filepath, std::vector<unsigned char> &data);
 
     /**
      * @brief Deletes a file.
@@ -52,7 +53,7 @@ public:
      * @return SecureStorage::Error::Errc::Success on success (or if file didn't exist),
      * or an error code if deletion fails for an existing file.
      */
-    static Error::Errc deleteFile(const std::string& filepath);
+    static Error::Errc deleteFile(const std::string &filepath);
 
     /**
      * @brief Checks if a file or directory exists at the given path.
@@ -60,7 +61,7 @@ public:
      * @param filepath The path to check.
      * @return true if the path exists, false otherwise.
      */
-    static bool pathExists(const std::string& filepath);
+    static bool pathExists(const std::string &filepath);
 
     /**
      * @brief Creates all directories in the given path if they do not exist.
@@ -69,14 +70,14 @@ public:
      * @param path The directory path to create.
      * @return SecureStorage::Error::Errc::Success on success, or an error code on failure.
      */
-    static Error::Errc createDirectories(const std::string& path);
+    static Error::Errc createDirectories(const std::string &path);
 
     /**
      * @brief Extracts the directory part from a full file path.
      * @param filepath The full path to a file.
      * @return The directory path, or an empty string if not found.
      */
-    static std::string getDirectory(const std::string& filepath);
+    static std::string getDirectory(const std::string &filepath);
 
     /**
      * @brief Lists all regular files in a given directory.
@@ -85,8 +86,8 @@ public:
      * @param[out] files A vector of strings to store the names of the files found.
      * @return SecureStorage::Error::Errc::Success on success, or an error code on failure.
      */
-    static Error::Errc listDirectory(const std::string& directoryPath, std::vector<std::string>& files);
-
+    static Error::Errc listDirectory(const std::string &directoryPath,
+                                     std::vector<std::string> &files);
 };
 
 } // namespace Utils

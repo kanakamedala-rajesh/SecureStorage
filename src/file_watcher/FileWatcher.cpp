@@ -1,13 +1,13 @@
 #include "FileWatcher.h"
 #include "FileUtil.h" // For pathExists, although stat is used here
 
+#include <cerrno>  // For errno
+#include <climits> // For NAME_MAX
+#include <cstring> // For strerror, memset
+#include <fcntl.h>
+#include <poll.h>        // For poll() to handle inotify FD and pipe FD
 #include <sys/inotify.h> // For inotify_init1, inotify_add_watch, struct inotify_event
 #include <unistd.h>      // For read, close, pipe
-#include <cerrno>        // For errno
-#include <cstring>       // For strerror, memset
-#include <poll.h>        // For poll() to handle inotify FD and pipe FD
-#include <climits>       // For NAME_MAX
-#include <fcntl.h>
 
 // Define event buffer size (can be tuned)
 #define EVENT_BUF_LEN (10 * (sizeof(struct inotify_event) + NAME_MAX + 1))
@@ -17,9 +17,7 @@ namespace SecureStorage {
 namespace FileWatcher {
 
 FileWatcher::FileWatcher(EventCallback eventLogCallback)
-    : m_inotifyFd(-1),
-      m_isRunning(false),
-      m_stoppedByUser(false),
+    : m_inotifyFd(-1), m_isRunning(false), m_stoppedByUser(false),
       m_eventCallback(std::move(eventLogCallback)) {
     m_pipeFd[0] = -1;
     m_pipeFd[1] = -1;
@@ -30,9 +28,10 @@ FileWatcher::~FileWatcher() {
 }
 
 bool FileWatcher::start() {
-    if (m_stoppedByUser.load()) { 
+    if (m_stoppedByUser.load()) {
         // If stop() was called and completed
-        SS_LOG_WARN("FileWatcher: Attempted to start a watcher that has been definitively stopped. Create a new instance to monitor again.");
+        SS_LOG_WARN("FileWatcher: Attempted to start a watcher that has been definitively stopped. "
+                    "Create a new instance to monitor again.");
         return false;
     }
 
@@ -40,7 +39,8 @@ bool FileWatcher::start() {
     // Attempt to set m_isRunning to true only if it's currently false.
     // This handles both initial start and prevents concurrent start calls from re-initializing.
     if (!m_isRunning.compare_exchange_strong(expected_is_running, true)) {
-        // If m_isRunning was already true (either running or in process of starting by another thread)
+        // If m_isRunning was already true (either running or in process of starting by another
+        // thread)
 
         SS_LOG_WARN("FileWatcher: Start called but watcher is already running or being started.");
         return true; // Indicate it's (or will be) running
@@ -48,7 +48,8 @@ bool FileWatcher::start() {
 
     m_inotifyFd = inotify_init();
     if (m_inotifyFd < 0) {
-        SS_LOG_ERROR("FileWatcher: Failed to initialize inotify (inotify_init): " << strerror(errno));
+        SS_LOG_ERROR(
+            "FileWatcher: Failed to initialize inotify (inotify_init): " << strerror(errno));
         m_isRunning.store(false);
         return false;
     } else {
@@ -62,7 +63,8 @@ bool FileWatcher::start() {
             return false;
         }
         if (fcntl(m_inotifyFd, F_SETFL, flags | O_NONBLOCK) == -1) {
-            SS_LOG_ERROR("FileWatcher: fcntl(F_SETFL, O_NONBLOCK) failed for inotify fd: " << strerror(errno));
+            SS_LOG_ERROR("FileWatcher: fcntl(F_SETFL, O_NONBLOCK) failed for inotify fd: "
+                         << strerror(errno));
             close(m_inotifyFd);
             m_inotifyFd = -1;
             m_isRunning.store(false);
@@ -80,7 +82,7 @@ bool FileWatcher::start() {
 
     try {
         m_monitorThread = std::thread(&FileWatcher::monitorLoop, this);
-    } catch (const std::system_error& e) {
+    } catch (const std::system_error &e) {
         SS_LOG_ERROR("FileWatcher: Failed to start monitor thread: " << e.what());
         close(m_inotifyFd);
         m_inotifyFd = -1;
@@ -100,11 +102,12 @@ void FileWatcher::stop() {
     // Try to set m_isRunning from true to false. If it was already false,
     // it means either it was never started, started & failed, or stop() was already called.
     if (!m_isRunning.compare_exchange_strong(expected_running, false)) {
-        SS_LOG_INFO("FileWatcher: Stop called, but watcher was not in a fully running state (m_isRunning was false).");
+        SS_LOG_INFO("FileWatcher: Stop called, but watcher was not in a fully running state "
+                    "(m_isRunning was false).");
         // If m_stoppedByUser is already true, we've been through full stop before.
         if (m_stoppedByUser.load()) {
-             SS_LOG_DEBUG("FileWatcher: Already fully stopped and cleaned up.");
-             return;
+            SS_LOG_DEBUG("FileWatcher: Already fully stopped and cleaned up.");
+            return;
         }
         // If thread is joinable, it means it might have started but exited prematurely or is stuck
         // while m_isRunning became false due to an error.
@@ -113,7 +116,8 @@ void FileWatcher::stop() {
             if (m_pipeFd[1] != -1) { // Signal just in case
                 char dummy = 'S';
                 if (write(m_pipeFd[1], &dummy, 1) < 0 && errno != EPIPE) {
-                     SS_LOG_WARN("FileWatcher::stop - Error writing to pipe for lingering thread: " << strerror(errno));
+                    SS_LOG_WARN("FileWatcher::stop - Error writing to pipe for lingering thread: "
+                                << strerror(errno));
                 }
             }
             m_monitorThread.join();
@@ -123,8 +127,10 @@ void FileWatcher::stop() {
         SS_LOG_INFO("FileWatcher: Stopping monitor thread...");
         if (m_pipeFd[1] != -1) {
             char dummy = 'S'; // Signal to stop
-            if (write(m_pipeFd[1], &dummy, 1) < 0 && errno != EPIPE) { // EPIPE is ok if read end already closed
-                SS_LOG_ERROR("FileWatcher: Error writing to pipe to signal stop: " << strerror(errno));
+            if (write(m_pipeFd[1], &dummy, 1) < 0 &&
+                errno != EPIPE) { // EPIPE is ok if read end already closed
+                SS_LOG_ERROR(
+                    "FileWatcher: Error writing to pipe to signal stop: " << strerror(errno));
             }
         }
         if (m_monitorThread.joinable()) {
@@ -137,7 +143,7 @@ void FileWatcher::stop() {
     { // Scope for lock
         std::lock_guard<std::mutex> lock(m_watchMutex);
         if (m_inotifyFd != -1) {
-            for (const auto& pair : m_wdToPathMap) {
+            for (const auto &pair : m_wdToPathMap) {
                 inotify_rm_watch(m_inotifyFd, pair.first);
             }
             m_wdToPathMap.clear();
@@ -148,17 +154,24 @@ void FileWatcher::stop() {
         }
     } // Mutex released
 
-    if (m_pipeFd[0] != -1) { close(m_pipeFd[0]); m_pipeFd[0] = -1; }
-    if (m_pipeFd[1] != -1) { close(m_pipeFd[1]); m_pipeFd[1] = -1; }
+    if (m_pipeFd[0] != -1) {
+        close(m_pipeFd[0]);
+        m_pipeFd[0] = -1;
+    }
+    if (m_pipeFd[1] != -1) {
+        close(m_pipeFd[1]);
+        m_pipeFd[1] = -1;
+    }
     SS_LOG_DEBUG("FileWatcher: Pipe FDs closed.");
 
     m_stoppedByUser.store(true); // Mark that stop() has completed its work.
     SS_LOG_INFO("FileWatcher: Stopped and resources cleaned.");
 }
 
-bool FileWatcher::addWatch(const std::string& path) {
+bool FileWatcher::addWatch(const std::string &path) {
     if (!m_isRunning.load() || m_inotifyFd < 0) {
-        SS_LOG_ERROR("FileWatcher: Not running or inotify not initialized. Cannot add watch for " << path);
+        SS_LOG_ERROR("FileWatcher: Not running or inotify not initialized. Cannot add watch for "
+                     << path);
         return false;
     }
     if (path.empty()) {
@@ -171,7 +184,6 @@ bool FileWatcher::addWatch(const std::string& path) {
         return false;
     }
 
-
     // Define the events we are interested in
     // IN_MODIFY: File was modified.
     // IN_CLOSE_WRITE: File opened for writing was closed.
@@ -180,10 +192,8 @@ bool FileWatcher::addWatch(const std::string& path) {
     // IN_DELETE: File/directory deleted from watched directory.
     // IN_MOVED_FROM / IN_MOVED_TO: File/directory moved.
     // IN_DELETE_SELF / IN_MOVE_SELF: Watched item itself deleted/moved.
-    uint32_t mask = IN_MODIFY | IN_CLOSE_WRITE | IN_ATTRIB |
-                      IN_CREATE | IN_DELETE |
-                      IN_MOVED_FROM | IN_MOVED_TO |
-                      IN_DELETE_SELF | IN_MOVE_SELF;
+    uint32_t mask = IN_MODIFY | IN_CLOSE_WRITE | IN_ATTRIB | IN_CREATE | IN_DELETE | IN_MOVED_FROM |
+                    IN_MOVED_TO | IN_DELETE_SELF | IN_MOVE_SELF;
 
     std::lock_guard<std::mutex> lock(m_watchMutex);
     if (m_pathToWdMap.count(path)) {
@@ -203,12 +213,13 @@ bool FileWatcher::addWatch(const std::string& path) {
     return true;
 }
 
-bool FileWatcher::removeWatch(const std::string& path) {
+bool FileWatcher::removeWatch(const std::string &path) {
     if (!m_isRunning.load() || m_inotifyFd < 0) {
-        SS_LOG_ERROR("FileWatcher: Not running or inotify not initialized. Cannot remove watch for " << path);
+        SS_LOG_ERROR("FileWatcher: Not running or inotify not initialized. Cannot remove watch for "
+                     << path);
         return false;
     }
-     if (path.empty()) {
+    if (path.empty()) {
         SS_LOG_ERROR("FileWatcher: Path to remove watch from cannot be empty.");
         return false;
     }
@@ -222,7 +233,8 @@ bool FileWatcher::removeWatch(const std::string& path) {
 
     int wd = it->second;
     if (inotify_rm_watch(m_inotifyFd, wd) < 0) {
-        SS_LOG_ERROR("FileWatcher: Failed to remove watch for " << path << " (wd: " << wd << "): " << strerror(errno));
+        SS_LOG_ERROR("FileWatcher: Failed to remove watch for " << path << " (wd: " << wd
+                                                                << "): " << strerror(errno));
         // Descriptor might still be in maps, but inotify failed.
         // Consider what to do here - for now, we still remove from maps.
     }
@@ -232,7 +244,6 @@ bool FileWatcher::removeWatch(const std::string& path) {
     SS_LOG_INFO("FileWatcher: Removed watch for path: " << path << " (wd: " << wd << ")");
     return true;
 }
-
 
 void FileWatcher::monitorLoop() {
     char buffer[EVENT_BUF_LEN];
@@ -258,7 +269,8 @@ void FileWatcher::monitorLoop() {
         }
 
         if (poll_ret < 0) {
-            if (errno == EINTR) continue; // Interrupted by a signal, continue if still running
+            if (errno == EINTR)
+                continue; // Interrupted by a signal, continue if still running
             SS_LOG_ERROR("FileWatcher: poll() failed: " << strerror(errno));
             m_isRunning.store(false); // Critical error, stop the loop
             break;
@@ -269,30 +281,32 @@ void FileWatcher::monitorLoop() {
             SS_LOG_INFO("FileWatcher: Stop signal received on pipe.");
             char dummy_buf[16];
             read(m_pipeFd[0], dummy_buf, sizeof(dummy_buf)); // Drain the pipe
-            break; // Exit loop
+            break;                                           // Exit loop
         }
-        
+
         // Check for inotify events
         if (fds[0].revents & POLLIN) {
             ssize_t len = read(m_inotifyFd, buffer, EVENT_BUF_LEN);
             if (len < 0) {
-                if (errno == EINTR) continue; // Interrupted
-                if (errno == EAGAIN || errno == EWOULDBLOCK) { // No data available (since non-blocking)
+                if (errno == EINTR)
+                    continue; // Interrupted
+                if (errno == EAGAIN ||
+                    errno == EWOULDBLOCK) { // No data available (since non-blocking)
                     // This shouldn't happen if poll indicated POLLIN, but handle defensively
-                    continue; 
+                    continue;
                 }
                 SS_LOG_ERROR("FileWatcher: read() from inotify failed: " << strerror(errno));
                 m_isRunning.store(false); // Critical error
                 break;
             }
             if (len == 0) { // Should not happen with blocking read, but check
-                 SS_LOG_WARN("FileWatcher: read() from inotify returned 0 bytes.");
-                 continue;
+                SS_LOG_WARN("FileWatcher: read() from inotify returned 0 bytes.");
+                continue;
             }
 
             ssize_t i = 0;
             while (i < len) {
-                struct inotify_event *event = reinterpret_cast<struct inotify_event*>(&buffer[i]);
+                struct inotify_event *event = reinterpret_cast<struct inotify_event *>(&buffer[i]);
                 if (event->wd == -1 && (event->mask & IN_Q_OVERFLOW)) {
                     SS_LOG_WARN("FileWatcher: Inotify event queue overflowed!");
                 } else {
@@ -305,7 +319,7 @@ void FileWatcher::monitorLoop() {
     SS_LOG_INFO("FileWatcher: Monitor thread finished.");
 }
 
-void FileWatcher::processInotifyEvent(const struct inotify_event* event) {
+void FileWatcher::processInotifyEvent(const struct inotify_event *event) {
     std::string path_watched;
     {
         std::lock_guard<std::mutex> lock(m_watchMutex); // Protect map access
@@ -334,31 +348,31 @@ void FileWatcher::processInotifyEvent(const struct inotify_event* event) {
     }
     fullItemPath += watchedEvent.fileName;
 
-
     // Log every operation on these files
     // Customize logging based on which events are considered "unintended writes"
     // For now, log all captured significant events.
     // IN_CLOSE_WRITE is particularly interesting for "unintended writes".
-    SS_LOG_INFO("FileWatcher Event: Path='" << path_watched 
-                << (watchedEvent.fileName.empty() ? "" : "/"+watchedEvent.fileName)
-                << "' FullItemPath='" << fullItemPath
-                << "' Mask=0x" << std::hex << event->mask << std::dec
-                << " Event(s): [" << watchedEvent.eventNameStr << "]"
+    SS_LOG_INFO("FileWatcher Event: Path='"
+                << path_watched
+                << (watchedEvent.fileName.empty() ? "" : "/" + watchedEvent.fileName)
+                << "' FullItemPath='" << fullItemPath << "' Mask=0x" << std::hex << event->mask
+                << std::dec << " Event(s): [" << watchedEvent.eventNameStr << "]"
                 << (watchedEvent.isDir ? " (Directory)" : " (File)"));
-
 
     // Handle specific events like watch removal
     if (event->mask & IN_IGNORED) {
-        SS_LOG_INFO("FileWatcher: Watch for '" << path_watched << "' (wd: " << event->wd << ") was removed (IN_IGNORED).");
+        SS_LOG_INFO("FileWatcher: Watch for '" << path_watched << "' (wd: " << event->wd
+                                               << ") was removed (IN_IGNORED).");
         std::lock_guard<std::mutex> lock(m_watchMutex);
         m_wdToPathMap.erase(event->wd);
-        m_pathToWdMap.erase(path_watched); // path_watched might be empty if wd not found, but we checked earlier
+        m_pathToWdMap.erase(
+            path_watched); // path_watched might be empty if wd not found, but we checked earlier
     }
     if (event->mask & IN_DELETE_SELF || event->mask & IN_MOVE_SELF) {
-         SS_LOG_INFO("FileWatcher: Watched item '" << path_watched << "' itself was deleted or moved.");
+        SS_LOG_INFO("FileWatcher: Watched item '" << path_watched
+                                                  << "' itself was deleted or moved.");
         // The watch is automatically removed by the kernel, IN_IGNORED will follow.
     }
-
 
     if (m_eventCallback) {
         m_eventCallback(watchedEvent);
@@ -367,29 +381,44 @@ void FileWatcher::processInotifyEvent(const struct inotify_event* event) {
 
 std::string FileWatcher::eventMaskToString(uint32_t mask) const {
     std::string res;
-    if (mask & IN_ACCESS)        res += "ACCESS ";
-    if (mask & IN_MODIFY)        res += "MODIFY ";
-    if (mask & IN_ATTRIB)        res += "ATTRIB ";
-    if (mask & IN_CLOSE_WRITE)   res += "CLOSE_WRITE ";
-    if (mask & IN_CLOSE_NOWRITE) res += "CLOSE_NOWRITE ";
-    if (mask & IN_OPEN)          res += "OPEN ";
-    if (mask & IN_MOVED_FROM)    res += "MOVED_FROM ";
-    if (mask & IN_MOVED_TO)      res += "MOVED_TO ";
-    if (mask & IN_CREATE)        res += "CREATE ";
-    if (mask & IN_DELETE)        res += "DELETE ";
-    if (mask & IN_DELETE_SELF)   res += "DELETE_SELF ";
-    if (mask & IN_MOVE_SELF)     res += "MOVE_SELF ";
-    if (mask & IN_UNMOUNT)       res += "UNMOUNT ";
-    if (mask & IN_Q_OVERFLOW)    res += "Q_OVERFLOW ";
-    if (mask & IN_IGNORED)       res += "IGNORED ";
-    if (mask & IN_ISDIR)         res += "ISDIR ";
+    if (mask & IN_ACCESS)
+        res += "ACCESS ";
+    if (mask & IN_MODIFY)
+        res += "MODIFY ";
+    if (mask & IN_ATTRIB)
+        res += "ATTRIB ";
+    if (mask & IN_CLOSE_WRITE)
+        res += "CLOSE_WRITE ";
+    if (mask & IN_CLOSE_NOWRITE)
+        res += "CLOSE_NOWRITE ";
+    if (mask & IN_OPEN)
+        res += "OPEN ";
+    if (mask & IN_MOVED_FROM)
+        res += "MOVED_FROM ";
+    if (mask & IN_MOVED_TO)
+        res += "MOVED_TO ";
+    if (mask & IN_CREATE)
+        res += "CREATE ";
+    if (mask & IN_DELETE)
+        res += "DELETE ";
+    if (mask & IN_DELETE_SELF)
+        res += "DELETE_SELF ";
+    if (mask & IN_MOVE_SELF)
+        res += "MOVE_SELF ";
+    if (mask & IN_UNMOUNT)
+        res += "UNMOUNT ";
+    if (mask & IN_Q_OVERFLOW)
+        res += "Q_OVERFLOW ";
+    if (mask & IN_IGNORED)
+        res += "IGNORED ";
+    if (mask & IN_ISDIR)
+        res += "ISDIR ";
 
     if (!res.empty()) { // Trim trailing space
         res.pop_back();
     }
     return res;
 }
-
 
 } // namespace FileWatcher
 } // namespace SecureStorage

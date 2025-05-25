@@ -15,7 +15,7 @@ Logger::Logger() : m_currentLevel(LogLevel::INFO) { // Default log level
 #endif
 }
 
-Logger& Logger::getInstance() {
+Logger &Logger::getInstance() {
     static Logger instance; // Singleton instance
     return instance;
 }
@@ -27,11 +27,16 @@ void Logger::setLogLevel(LogLevel level) {
 
 std::string Logger::logLevelToString(LogLevel level) {
     switch (level) {
-        case LogLevel::DEBUG:   return "DEBUG";
-        case LogLevel::INFO:    return "INFO ";
-        case LogLevel::WARNING: return "WARN ";
-        case LogLevel::ERROR:   return "ERROR";
-        default:                return "UNKWN";
+    case LogLevel::DEBUG:
+        return "DEBUG";
+    case LogLevel::INFO:
+        return "INFO ";
+    case LogLevel::WARNING:
+        return "WARN ";
+    case LogLevel::ERROR:
+        return "ERROR";
+    default:
+        return "UNKWN";
     }
 }
 
@@ -51,16 +56,15 @@ std::string Logger::getCurrentTimestamp() {
 
     std::ostringstream ss;
     ss << std::put_time(&buf, "%Y-%m-%d %H:%M:%S");
-    
+
     // Add milliseconds
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
     ss << '.' << std::setfill('0') << std::setw(3) << ms.count();
-    
+
     return ss.str();
 }
 
-
-void Logger::log(LogLevel level, const std::string& message, const char* file, int line) {
+void Logger::log(LogLevel level, const std::string &message, const char *file, int line) {
     std::lock_guard<std::mutex> lock(m_mutex); // Ensure thread-safe output
 
     if (level < m_currentLevel) {
@@ -76,8 +80,7 @@ void Logger::log(LogLevel level, const std::string& message, const char* file, i
 
     std::cout << "[" << getCurrentTimestamp() << "] "
               << "[" << logLevelToString(level) << "] "
-              << "[" << filename_str << ":" << line << "] "
-              << message << std::endl;
+              << "[" << filename_str << ":" << line << "] " << message << std::endl;
 }
 
 } // namespace Utils

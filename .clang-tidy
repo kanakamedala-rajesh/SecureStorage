@@ -1,0 +1,76 @@
+---
+# .clang-tidy configuration file
+# For a full list of checks: clang-tidy -list-checks -checks='*'
+# This configuration enables a broad set of checks.
+# Customize this based on your project's needs and coding standards.
+
+Checks: >
+  -*, # Disable all checks first, then enable specific ones or groups
+  bugprone-*,
+  cert-*, # CERT C++ Secure Coding Standards
+  clang-analyzer-*, # Clang Static Analyzer checks
+  cppcoreguidelines-*, # C++ Core Guidelines
+  google-*, # Google C++ Style Guide checks (can be noisy, customize)
+  hicpp-*, # High Integrity C++ Coding Standard checks
+  llvm-*, # LLVM coding standards checks (can be specific to LLVM development)
+  misc-*,
+  modernize-*, # Checks for modernizing C++ code (e.g., use of C++11 features)
+  mpi-*, # Checks for MPI (Message Passing Interface) usage
+  performance-*,
+  portability-*,
+  readability-*
+
+# Disable specific checks if they are too noisy or not applicable:
+# For example:
+# -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+# -modernize-use-trailing-return-type,
+# -google-build-using-namespace,
+# -readability-magic-numbers,
+# -hicpp-signed-bitwise, # if you intentionally use bitwise on signed types after careful consideration
+
+WarningsAsErrors: '' # Comma-separated list of checks to treat as errors
+# Example: 'misc-unused-parameters,readability-redundant-string-cstr'
+
+CheckOptions:
+  # Options for specific checks can be configured here.
+  # Refer to clang-tidy documentation for available options per check.
+  - key: modernize-UseAuto.MinTypeNameLength
+    value: '5' # Only suggest 'auto' for types longer than 5 characters
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantCase
+    value: UpperCase # Or CamelCase
+  - key: readability-identifier-naming.FunctionCase
+    value: camelBack
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: UpperCase
+  - key: readability-identifier-naming.GlobalVariableCase
+    value: camelBack # Or g_camelBack
+  - key: readability-identifier-naming.LocalVariableCase
+    value: camelBack
+  - key: readability-identifier-naming.MemberCase # Private/protected members
+    value: m_camelBack # Common convention: m_ prefix
+  - key: readability-identifier-naming.ParameterCase
+    value: camelBack
+  - key: readability-braces-around-statements.ShortStatementLines
+    value: '0' # Always put braces for if/else/while/for single-line statements
+  - key: cppcoreguidelines-avoid-magic-numbers.IgnoreAllNumbersWithSuffixes
+    value: 'true' # Example: ignore numbers like 100ms, 5.0f
+
+# --- CRITICAL FOR SCOPING ---
+# This regex tells clang-tidy to primarily report issues from headers
+# located within your 'src' directory.
+# It will still analyze .cpp files outside this if they are compiled,
+# but warnings from their included headers will be filtered by this.
+HeaderFilterRegex: '^src/.*\.(h|hpp|hxx)$'
+
+# You can also specify per-file check configurations if needed:
+# - key: Checks
+#   value: "-*, some-specific-check-for-this-file"
+# - key: HeaderFilterRegex # Apply only to specific headers/sources
+#   value: "src/special_module/.*"
+...

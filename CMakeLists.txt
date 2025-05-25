@@ -5,6 +5,12 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Add this line to generate compile_commands.json for static analyzers
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Enable testing for this project
+enable_testing()
+
 include(FetchContent)
 
 enable_language(C)
@@ -83,27 +89,24 @@ add_subdirectory(examples)
 # --- Doxygen Documentation ---
 find_package(Doxygen)
 if(DOXYGEN_FOUND)
-    set(DOXYGEN_PROJECT_VERSION "${PROJECT_VERSION}") # Use project version from CMake
-    set(DOXYGEN_INPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/examples")
-    set(DOXYGEN_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/docs/") # Output relative to build dir
+    set(DOXYGEN_PROJECT_NAME "${PROJECT_NAME}")
+    set(DOXYGEN_PROJECT_NUMBER "${PROJECT_VERSION}")
+    set(DOXYGEN_INPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/examples")
+    
+    # Output directory for Doxygen files within the CMake build directory for the 'doxygen' target
+    set(DOXYGEN_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/docs") # Doxyfile.in will use this as base
     set(DOXYFILE_IN "${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in") # Assuming Doxyfile.in is in root
-    set(DOXYFILE_OUT "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile")
-
-    # Create a configuration string for Doxygen from CMake variables
-    # This makes it easier to use @VAR@ substitutions in Doxyfile.in
-    # For example, INPUT needs absolute paths.
-    # However, the Doxyfile.in shown above directly uses CMake variables that
-    # configure_file will replace.
+    set(DOXYFILE_OUT "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile") # Doxyfile generated in build dir
 
     configure_file(${DOXYFILE_IN} ${DOXYFILE_OUT} @ONLY)
 
-    add_custom_target(doxygen COMMAND
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${DOXYGEN_OUTPUT_DIR} # Create output directory
+    add_custom_target(doxygen ALL # Add ALL to build docs with default build
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${DOXYGEN_OUTPUT_DIR}/html # Ensure HTML output dir exists based on common Doxyfile.in setting
         COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYFILE_OUT}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} # Doxygen should run where Doxyfile is
-        COMMENT "Generating API documentation with Doxygen into ${DOXYGEN_OUTPUT_DIR}"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} # Doxygen runs where Doxyfile is
+        COMMENT "Generating API documentation with Doxygen into ${DOXYGEN_OUTPUT_DIR}/html"
         VERBATIM)
-    message(STATUS "Doxygen target added. Output will be in ${DOXYGEN_OUTPUT_DIR}")
+    message(STATUS "Doxygen target added. Output will be in ${DOXYGEN_OUTPUT_DIR}/html (or similar, check Doxyfile)")
 else()
     message(WARNING "Doxygen not found. Documentation will not be generated.")
 endif()

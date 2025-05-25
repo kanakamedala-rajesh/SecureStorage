@@ -2,9 +2,9 @@
 #define SS_ENCRYPTOR_H
 
 #include "Error.h"
-#include <vector>
-#include <string>
 #include <memory> // For std::unique_ptr
+#include <string>
+#include <vector>
 
 // Forward declare Mbed TLS types to keep them out of this public header
 struct mbedtls_gcm_context;
@@ -37,13 +37,13 @@ public:
      * This should ideally be unique per application/device instance.
      * "SecureStorageEncryptor" can be a default.
      */
-    explicit Encryptor(const std::string& personalizationData = "SecureStorageEncryptorSeed");
+    explicit Encryptor(const std::string &personalizationData = "SecureStorageEncryptorSeed");
     ~Encryptor();
 
-    Encryptor(const Encryptor&) = delete;
-    Encryptor& operator=(const Encryptor&) = delete;
-    Encryptor(Encryptor&&) noexcept;
-    Encryptor& operator=(Encryptor&&) noexcept;
+    Encryptor(const Encryptor &) = delete;
+    Encryptor &operator=(const Encryptor &) = delete;
+    Encryptor(Encryptor &&) noexcept;
+    Encryptor &operator=(Encryptor &&) noexcept;
 
     /**
      * @brief Encrypts plaintext data using AES-256-GCM.
@@ -59,11 +59,10 @@ public:
      * but not encrypted. Default is empty.
      * @return SecureStorage::Error::Errc::Success on success, or an error code on failure.
      */
-    Error::Errc encrypt(
-        const std::vector<unsigned char>& plaintext,
-        const std::vector<unsigned char>& key,
-        std::vector<unsigned char>& outputBuffer,
-        const std::vector<unsigned char>& aad = {});
+    Error::Errc encrypt(const std::vector<unsigned char> &plaintext,
+                        const std::vector<unsigned char> &key,
+                        std::vector<unsigned char> &outputBuffer,
+                        const std::vector<unsigned char> &aad = {});
 
     /**
      * @brief Decrypts data previously encrypted with AES-256-GCM.
@@ -80,11 +79,10 @@ public:
      * SecureStorage::Error::Errc::AuthenticationFailed if GCM tag mismatch or data tampered.
      * Other error codes on different failures.
      */
-    Error::Errc decrypt(
-        const std::vector<unsigned char>& inputBuffer,
-        const std::vector<unsigned char>& key,
-        std::vector<unsigned char>& plaintext,
-        const std::vector<unsigned char>& aad = {});
+    Error::Errc decrypt(const std::vector<unsigned char> &inputBuffer,
+                        const std::vector<unsigned char> &key,
+                        std::vector<unsigned char> &plaintext,
+                        const std::vector<unsigned char> &aad = {});
 
 private:
     // PImpl idiom to hide Mbed TLS context details
@@ -96,7 +94,7 @@ private:
      * @param[out] iv Vector to store the generated IV. It will be sized to AES_GCM_IV_SIZE_BYTES.
      * @return SecureStorage::Error::Errc::Success on success, or an error code.
      */
-    Error::Errc generateIv(std::vector<unsigned char>& iv);
+    Error::Errc generateIv(std::vector<unsigned char> &iv);
 };
 
 } // namespace Crypto

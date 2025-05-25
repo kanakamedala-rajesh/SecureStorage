@@ -1,11 +1,11 @@
 #ifndef SECURE_STORAGE_H
 #define SECURE_STORAGE_H
 
-#include "utils/Error.h" // For SecureStorage::Error::Errc
 #include "file_watcher/FileWatcher.h" // For FileWatcher::EventCallback
+#include "utils/Error.h"              // For SecureStorage::Error::Errc
+#include <memory>                     // For std::unique_ptr
 #include <string>
 #include <vector>
-#include <memory> // For std::unique_ptr
 
 /**
  * @mainpage SecureStorage Library Documentation
@@ -21,23 +21,32 @@
  * encryption and supports resilience against power key cycles.
  *
  * @section features_sec Key Features
- * - **Strong Encryption:** Utilizes AES-256-GCM for authenticated encryption, providing both confidentiality and data integrity.
- * - **Device-Specific Keys:** Derives unique encryption keys for each device using its serial number via HKDF (HMAC-based Key Derivation Function). Keys are not stored directly.
+ * - **Strong Encryption:** Utilizes AES-256-GCM for authenticated encryption, providing both
+ * confidentiality and data integrity.
+ * - **Device-Specific Keys:** Derives unique encryption keys for each device using its serial
+ * number via HKDF (HMAC-based Key Derivation Function). Keys are not stored directly.
  * - **Secure Data Storage:** Manages encrypted data items within a specified root storage path.
- * - **Atomic Operations:** Employs atomic file write strategies (write-to-temp then rename) to prevent data corruption during power loss or unexpected shutdowns.
- * - **Backup Strategy:** Maintains backup copies of encrypted data files for enhanced data resilience.
- * - **File Watcher:** Continuously monitors encrypted files for unintended modifications and logs these operations.
- * - **Cross-Platform Design:** Built with C++11 for cross-compilability on target Linux-based systems.
- * - **Error Handling:** Provides clear error reporting via `SecureStorage::Error::Errc` and `std::error_code`.
+ * - **Atomic Operations:** Employs atomic file write strategies (write-to-temp then rename) to
+ * prevent data corruption during power loss or unexpected shutdowns.
+ * - **Backup Strategy:** Maintains backup copies of encrypted data files for enhanced data
+ * resilience.
+ * - **File Watcher:** Continuously monitors encrypted files for unintended modifications and logs
+ * these operations.
+ * - **Cross-Platform Design:** Built with C++11 for cross-compilability on target Linux-based
+ * systems.
+ * - **Error Handling:** Provides clear error reporting via `SecureStorage::Error::Errc` and
+ * `std::error_code`.
  * - **Low Footprint:** Designed to be mindful of memory and CPU usage.
  * - **Offline Operation:** Operates without requiring internet access.
  *
  * @section architecture_sec Architecture Overview
  * The library is composed of several key modules:
  * - **SecureStorageManager:** The main public facade providing a simplified API for library users.
- * - **SecureStore:** Handles the logical storage and retrieval of data items, managing encryption, file I/O, and backups.
+ * - **SecureStore:** Handles the logical storage and retrieval of data items, managing encryption,
+ * file I/O, and backups.
  * - **FileWatcher:** Monitors the storage directory for changes.
- * - **Encryptor & KeyProvider:** Core cryptographic components for AES-GCM encryption and key derivation.
+ * - **Encryptor & KeyProvider:** Core cryptographic components for AES-GCM encryption and key
+ * derivation.
  * - **Utilities:** Helper classes for logging, error handling, and file operations.
  *
  * @section usage_sec Basic Usage
@@ -88,15 +97,15 @@
  * @endcode
  *
  * @section notes_sec Important Notes
- * - The security of the stored data heavily relies on the uniqueness and secrecy of the device serial number
- * and the physical security of the device.
- * - The FileWatcher provides logging of filesystem events; application-level responses to these events
- * need to be implemented by the user if required beyond logging.
+ * - The security of the stored data heavily relies on the uniqueness and secrecy of the device
+ * serial number and the physical security of the device.
+ * - The FileWatcher provides logging of filesystem events; application-level responses to these
+ * events need to be implemented by the user if required beyond logging.
  */
 
 namespace SecureStorage {
 namespace Storage {
-    class SecureStore; // Forward declare
+class SecureStore; // Forward declare
 }
 // Forward declare FileWatcher if it were to be part of SecureStorageManager
 // namespace Watcher { class FileWatcher; }
@@ -127,8 +136,7 @@ public:
      * If nullptr, default logging by FileWatcher will occur.
      */
     SecureStorageManager(
-        const std::string& storagePath,
-        const std::string& keyFilePath,
+        const std::string &storagePath, const std::string &keyFilePath,
         FileWatcher::EventCallback callback); // MODIFIED: Was 'int pollingIntervalMs'
 
     /**
@@ -137,12 +145,12 @@ public:
     ~SecureStorageManager();
 
     // Disable copy operations as this manager handles unique underlying resources.
-    SecureStorageManager(const SecureStorageManager&) = delete;
-    SecureStorageManager& operator=(const SecureStorageManager&) = delete;
+    SecureStorageManager(const SecureStorageManager &) = delete;
+    SecureStorageManager &operator=(const SecureStorageManager &) = delete;
 
     // Enable move operations
-    SecureStorageManager(SecureStorageManager&&) noexcept;
-    SecureStorageManager& operator=(SecureStorageManager&&) noexcept;
+    SecureStorageManager(SecureStorageManager &&) noexcept;
+    SecureStorageManager &operator=(SecureStorageManager &&) noexcept;
 
     /**
      * @brief Checks if the SecureStorageManager was successfully initialized.
@@ -169,7 +177,7 @@ public:
      * @return Error::Errc::InvalidArgument if `data_id` is invalid.
      * @return Other error codes for encryption or file system failures.
      */
-    Error::Errc storeData(const std::string& data_id, const std::vector<unsigned char>& plain_data);
+    Error::Errc storeData(const std::string &data_id, const std::vector<unsigned char> &plain_data);
 
     /**
      * @brief Retrieves securely stored data.
@@ -188,7 +196,8 @@ public:
      * @return Error::Errc::AuthenticationFailed if data integrity check fails (tampering).
      * @return Other error codes for decryption or file system failures.
      */
-    Error::Errc retrieveData(const std::string& data_id, std::vector<unsigned char>& out_plain_data);
+    Error::Errc retrieveData(const std::string &data_id,
+                             std::vector<unsigned char> &out_plain_data);
 
     /**
      * @brief Deletes securely stored data.
@@ -201,7 +210,7 @@ public:
      * @return Error::Errc::InvalidArgument if `data_id` is invalid.
      * @return Other error codes for file system failures.
      */
-    Error::Errc deleteData(const std::string& data_id);
+    Error::Errc deleteData(const std::string &data_id);
 
     /**
      * @brief Checks if data associated with a `data_id` exists in secure storage.
@@ -209,7 +218,7 @@ public:
      * @param data_id The unique identifier to check.
      * @return true if data for `data_id` exists, false otherwise or if not initialized/invalid ID.
      */
-    bool dataExists(const std::string& data_id) const;
+    bool dataExists(const std::string &data_id) const;
 
     /**
      * @brief Lists all unique data IDs currently stored.
@@ -220,7 +229,7 @@ public:
      * @return Error::Errc::NotInitialized if the manager is not initialized.
      * @return Other error codes for file system failures.
      */
-    Error::Errc listDataIds(std::vector<std::string>& out_data_ids) const;
+    Error::Errc listDataIds(std::vector<std::string> &out_data_ids) const;
 
     /**
      * @brief Checks if the file watcher component is active.
@@ -242,7 +251,8 @@ private:
 
     // Member variable declaration (around line 98)
     // This line should now compile correctly after adding the include for FileWatcher
-    FileWatcher::EventCallback fileWatcherCallback = nullptr; // Optional callback for file watcher events
+    FileWatcher::EventCallback fileWatcherCallback =
+        nullptr; // Optional callback for file watcher events
 };
 
 } // namespace SecureStorage

@@ -1,0 +1,21 @@
+---
+# Based on LLVM style, with modifications
+Language: Cpp
+BasedOnStyle: LLVM
+IndentWidth: 4
+UseTab: Never # Or "Always" or "ForIndentation" or "ForContinuationAndAlignment"
+TabWidth: 4
+BreakBeforeBraces: Attach # Other options: Allman, GNU, WebKit, Custom
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None # Options: None, InlineOnly, Empty, Inline, All
+IndentCaseLabels: false
+ColumnLimit: 100 # Adjust to your preference
+AccessModifierOffset: -4 # Aligns public/private/protected with the class keyword
+Standard: Cpp11 # Enforce C++11 standard for formatting decisions
+PointerAlignment: Right # Aligns '*' or '&' to the right (e.g., int* p)
+SpaceBeforeParens: ControlStatements # Options: Never, ControlStatements, Always
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+# For more options, see: https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+---

@@ -1,12 +1,11 @@
-PROJECT_NAME           = "SecureStorage Library"
-PROJECT_NUMBER         = @SecureStorage_VERSION@
+PROJECT_NAME           = @DOXYGEN_PROJECT_NAME@
+PROJECT_NUMBER         = @DOXYGEN_PROJECT_NUMBER@
 PROJECT_BRIEF          = "Secure data storage and file watching for embedded systems"
 OUTPUT_DIRECTORY       = @DOXYGEN_OUTPUT_DIR@
-INPUT                  = @CMAKE_SOURCE_DIR@/src \
-                         @CMAKE_SOURCE_DIR@/examples # Add other dirs if they have documented code
+INPUT                  = @DOXYGEN_INPUT_DIR@
 RECURSIVE              = YES
 EXTRACT_ALL            = YES # Set to NO if you only want to extract documented entities
-EXTRACT_PRIVATE        = NO
+EXTRACT_PRIVATE        = YES
 EXTRACT_STATIC         = YES
 HIDE_UNDOC_MEMBERS     = YES
 HIDE_UNDOC_CLASSES     = YES

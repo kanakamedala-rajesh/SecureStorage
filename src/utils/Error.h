@@ -12,8 +12,8 @@ namespace Error {
  * These can be used with std::error_code.
  */
 enum class Errc {
-    Success = 0,                  // No error
-    
+    Success = 0, // No error
+
     // General Errors
     UnknownError,
     InvalidArgument,
@@ -32,11 +32,11 @@ enum class Errc {
     // Crypto Errors
     EncryptionFailed,
     DecryptionFailed,
-    AuthenticationFailed,        // e.g., GCM tag mismatch
+    AuthenticationFailed, // e.g., GCM tag mismatch
     KeyDerivationFailed,
     InvalidKey,
     InvalidIV,
-    CryptoLibraryError,          // For errors from Mbed TLS
+    CryptoLibraryError, // For errors from Mbed TLS
 
     // Data Storage Errors
     DataNotFound,
@@ -62,7 +62,7 @@ public:
      * @brief Returns the name of the error category.
      * @return The name "SecureStorage".
      */
-    const char* name() const noexcept override;
+    const char *name() const noexcept override;
 
     /**
      * @brief Converts an error code value (from Errc) into a descriptive string.
@@ -75,7 +75,7 @@ public:
      * @brief Provides a singleton instance of the error category.
      * @return A reference to the static SecureStorageErrorCategory instance.
      */
-    static const SecureStorageErrorCategory& get() noexcept;
+    static const SecureStorageErrorCategory &get() noexcept;
 };
 
 /**
@@ -101,14 +101,13 @@ inline std::error_condition make_error_condition(Errc e) noexcept {
 } // namespace SecureStorage
 
 namespace std {
-    /**
-     * @brief Specialization of std::is_error_code_enum for SecureStorage::Error::Errc.
-     *
-     * This allows SecureStorage::Error::Errc to be used directly with
-     * std::error_code mechanisms.
-     */
-    template <>
-    struct is_error_code_enum<SecureStorage::Error::Errc> : public true_type {};
+/**
+ * @brief Specialization of std::is_error_code_enum for SecureStorage::Error::Errc.
+ *
+ * This allows SecureStorage::Error::Errc to be used directly with
+ * std::error_code mechanisms.
+ */
+template <> struct is_error_code_enum<SecureStorage::Error::Errc> : public true_type {};
 } // namespace std
 
 #endif // SS_ERROR_H
