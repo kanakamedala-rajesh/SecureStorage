@@ -1,8 +1,8 @@
-name: SecureStorage Build on multiple platforms
+name: SecureStorage CI, Analysis & Release
 
 on:
   push:
-    branches: 
+    branches:
       - '*' # Trigger on pushes to all branches
     tags:
       - 'v*' # Trigger release job on version tags
@@ -14,50 +14,114 @@ on:
       test_tag_name:
         description: 'Tag name for test release (e.g., v0.0.0-test). If empty, a default test tag is used.'
         required: false
-        default: 'v0.0.0-manual-test'
+        default: 'v0.0.0-manual-workflow-test'
 
 jobs:
-  build: # Linux builds
-    name: Build Linux (${{ matrix.c_compiler }})
+  build_linux:
+    name: Build Linux (${{ matrix.config.name }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        build_type: [Release]
-        c_compiler: [gcc, clang]
-        include:
-          - c_compiler: gcc
+        config:
+          - name: "gcc-coverage"
+            c_compiler: gcc
             cpp_compiler: g++
-          - c_compiler: clang
+            build_type: Debug # Coverage typically requires Debug symbols
+            enable_coverage: true
+            enable_clang_tidy: false
+          - name: "clang-analysis"
+            c_compiler: clang
             cpp_compiler: clang++
-
+            build_type: Release # Clang-Tidy can run on Release builds
+            enable_coverage: false
+            enable_clang_tidy: true
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
       with:
-        fetch-depth: 0 
+        fetch-depth: 0 # Required for accurate versioning or history-based analysis
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends cppcheck \
+          ${{ matrix.config.enable_coverage && 'lcov' || '' }} \
+          ${{ matrix.config.enable_clang_tidy && 'clang-tidy' || '' }}
 
     - name: Set reusable strings
       id: strings
       shell: bash
       run: |
-        echo "build-output-dir=${{ github.workspace }}/build-linux-${{ matrix.c_compiler }}" >> "$GITHUB_OUTPUT"
-        echo "install-output-dir=${{ github.workspace }}/install-linux-${{ matrix.c_compiler }}" >> "$GITHUB_OUTPUT"
+        echo "build-output-dir=${{ github.workspace }}/build-linux-${{ matrix.config.name }}" >> "$GITHUB_OUTPUT"
+        echo "install-output-dir=${{ github.workspace }}/install-linux-${{ matrix.config.name }}" >> "$GITHUB_OUTPUT"
 
     - name: Configure CMake
-      run: >
-        cmake -B ${{ steps.strings.outputs.build-output-dir }}
-        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
-        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
-        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -DCMAKE_INSTALL_PREFIX=${{ steps.strings.outputs.install-output-dir }}
-        -S ${{ github.workspace }}
+      shell: bash
+      run: |
+        CMAKE_ARGS=(
+          "-B ${{ steps.strings.outputs.build-output-dir }}"
+          "-DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }}"
+          "-DCMAKE_C_COMPILER=${{ matrix.config.c_compiler }}"
+          "-DCMAKE_CXX_COMPILER=${{ matrix.config.cpp_compiler }}"
+          "-DCMAKE_INSTALL_PREFIX=${{ steps.strings.outputs.install-output-dir }}"
+        )
+        if [[ "${{ matrix.config.enable_coverage }}" == "true" ]]; then
+          # Add coverage flags for GCC
+          CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=--coverage -fprofile-arcs -ftest-coverage" "-DCMAKE_C_FLAGS=--coverage -fprofile-arcs -ftest-coverage")
+          CMAKE_ARGS+=("-DCMAKE_EXE_LINKER_FLAGS=--coverage" "-DCMAKE_SHARED_LINKER_FLAGS=--coverage")
+        fi
+        if [[ "${{ matrix.config.enable_clang_tidy }}" == "true" ]]; then
+          # Assumes .clang-tidy file is in the root of the repository.
+          # CMake will automatically find it if CMAKE_CXX_CLANG_TIDY is set to just "clang-tidy".
+          CMAKE_ARGS+=("-DCMAKE_CXX_CLANG_TIDY=clang-tidy")
+        fi
+        cmake "${CMAKE_ARGS[@]}" -S ${{ github.workspace }}
 
     - name: Build
-      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.config.build_type }} -j$(nproc)
 
     - name: Test
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
-      run: ctest --build-config ${{ matrix.build_type }}
+      run: ctest --build-config ${{ matrix.config.build_type }} --output-on-failure
+
+    - name: Run Cppcheck
+      run: |
+        # Ensure compile_commands.json exists for cppcheck project mode
+        if [ ! -f "${{ steps.strings.outputs.build-output-dir }}/compile_commands.json" ]; then
+          echo "Error: compile_commands.json not found. Make sure CMAKE_EXPORT_COMPILE_COMMANDS is ON."
+          exit 1
+        fi
+        # Analyze only the src directory, using the compilation database for context.
+        echo "Running cppcheck on src/ directory with project context from ${{ steps.strings.outputs.build-output-dir }}/compile_commands.json"
+        cppcheck --enable=all --suppress=missingIncludeSystem --error-exitcode=1 \
+                 --project=${{ steps.strings.outputs.build-output-dir }}/compile_commands.json \
+                 --output-file=cppcheck_report.xml --xml src/
+        echo "Cppcheck analysis complete. Report generated at cppcheck_report.xml"
+    - name: Upload Cppcheck report
+      uses: actions/upload-artifact@v4
+      with:
+        name: cppcheck-report-${{ matrix.config.name }}
+        path: cppcheck_report.xml
+      if: always() # Upload even if cppcheck finds errors or previous steps fail
+
+    - name: Generate Code Coverage Report (GCC)
+      if: matrix.config.enable_coverage
+      working-directory: ${{ steps.strings.outputs.build-output-dir }}
+      run: |
+        lcov --capture --directory . --output-file coverage.info --rc lcov_branch_coverage=1
+        # Remove external libraries, test files, and examples from coverage if desired
+        lcov --remove coverage.info '/usr/*' --output-file coverage.info --rc lcov_branch_coverage=1
+        lcov --remove coverage.info '${{ github.workspace }}/build*/*_deps/*' --output-file coverage.info --rc lcov_branch_coverage=1 # MbedTLS, GTest from FetchContent
+        lcov --remove coverage.info '${{ github.workspace }}/tests/*' --output-file coverage.info --rc lcov_branch_coverage=1
+        lcov --remove coverage.info '${{ github.workspace }}/examples/*' --output-file coverage.info --rc lcov_branch_coverage=1
+        genhtml coverage.info --output-directory coverage-html-gcc --title "SecureStorage Coverage (GCC)" --legend --branch-coverage
+    - name: Upload Coverage Report Artifact (GCC)
+      if: matrix.config.enable_coverage
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report-gcc
+        path: ${{ steps.strings.outputs.build-output-dir }}/coverage-html-gcc
 
     - name: Install project
       run: cmake --install ${{ steps.strings.outputs.build-output-dir }} --prefix ${{ steps.strings.outputs.install-output-dir }}
@@ -65,7 +129,7 @@ jobs:
     - name: Upload Linux build artifact
       uses: actions/upload-artifact@v4
       with:
-        name: build-linux-${{ matrix.c_compiler }}-${{ matrix.build_type }}
+        name: build-linux-${{ matrix.config.name }} # e.g., build-linux-gcc-coverage
         path: ${{ steps.strings.outputs.install-output-dir }}/
 
   build_android:
@@ -76,21 +140,19 @@ jobs:
       matrix:
         config:
           - name: "api21-arm64-v8a"
-            api_level: 21 # This will be the effective minimum API for system headers with NDK r25c
+            api_level: 21
             abi: "arm64-v8a"
             ndk_version_package: "ndk;25.2.9519653" # NDK r25c
-            ndk_folder_name: "25.2.9519653"        
             cpp_stl: "c++_shared"
-          - name: "api18-armeabi-v7a"
-            api_level: 18 # NDK r25c will use its min (19) for headers, but can target 18 for manifest/compatibility
+          - name: "api18-armeabi-v7a" # NDK r25c uses min API 19 for system headers, but can target 18 for manifest
+            api_level: 18
             abi: "armeabi-v7a"
-            ndk_version_package: "ndk;25.2.9519653" # Use the same NDK r25c
-            ndk_folder_name: "25.2.9519653"       
-            cpp_stl: "c++_shared" 
+            ndk_version_package: "ndk;25.2.9519653"
+            cpp_stl: "c++_shared"
         build_type: [Release]
-
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
@@ -108,68 +170,48 @@ jobs:
         echo "install-output-dir=${{ github.workspace }}/install-android-${{ matrix.config.name }}" >> "$GITHUB_OUTPUT"
 
     - name: Setup Android SDK & NDK
-      id: setup_ndk 
       uses: android-actions/setup-android@v3
       with:
-        packages: "${{ matrix.config.ndk_version_package }}" 
-
+        packages: "${{ matrix.config.ndk_version_package }}" # Installs specific NDK version
     - name: Configure CMake for Android
       shell: bash
-      env:
-        ANDROID_SDK_ROOT_ENV: ${{ env.ANDROID_SDK_ROOT }} 
       run: |
-        EXPECTED_NDK_FOLDER_NAME="${{ matrix.config.ndk_folder_name }}"
-        EFFECTIVE_NDK_HOME="$ANDROID_SDK_ROOT_ENV/ndk/$EXPECTED_NDK_FOLDER_NAME"
-
-        echo "DEBUG: Matrix NDK folder name: $EXPECTED_NDK_FOLDER_NAME"
-        echo "DEBUG: ANDROID_SDK_ROOT_ENV used: $ANDROID_SDK_ROOT_ENV"
-        echo "Constructed NDK path: $EFFECTIVE_NDK_HOME"
-        
-        if [ -z "$ANDROID_SDK_ROOT_ENV" ]; then
-            echo "Error: ANDROID_SDK_ROOT_ENV is not set. Android SDK setup likely failed."
+        if [ -z "$ANDROID_NDK_HOME" ]; then
+          echo "Error: ANDROID_NDK_HOME is not set. Android NDK setup likely failed or did not export the variable as expected."
+          exit 1
+        fi
+        local_toolchain_file="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+        if [ ! -f "$local_toolchain_file" ]; then
+            echo "Error: Android NDK toolchain file not found at $local_toolchain_file"
+            echo "Listing contents of $ANDROID_NDK_HOME:"
+            ls -la "$ANDROID_NDK_HOME"
+            echo "Listing contents of $ANDROID_NDK_HOME/build/cmake/:"
+            ls -la "$ANDROID_NDK_HOME/build/cmake/"
             exit 1
         fi
-        if [ ! -d "$EFFECTIVE_NDK_HOME" ]; then
-          echo "Error: Constructed NDK path does not exist: '$EFFECTIVE_NDK_HOME'"
-          echo "Listing $ANDROID_SDK_ROOT_ENV/ndk/ to see available NDKs (if any):"
-          ls -la "$ANDROID_SDK_ROOT_ENV/ndk/" || echo "NDK directory $ANDROID_SDK_ROOT_ENV/ndk/ not found or ls failed."
-          exit 1
-        fi
-        
-        if [ ! -f "$EFFECTIVE_NDK_HOME/source.properties" ]; then
-          echo "Error: Android NDK at $EFFECTIVE_NDK_HOME does not appear valid (missing source.properties)."
-          echo "Listing contents of $EFFECTIVE_NDK_HOME:"
-          ls -la "$EFFECTIVE_NDK_HOME"
-          exit 1
-        fi
-
-        echo "Final NDK path for CMake: $EFFECTIVE_NDK_HOME"
+        echo "Using NDK from ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
         cmake -B ${{ steps.strings.outputs.build-output-dir }} \
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
           -DCMAKE_INSTALL_PREFIX=${{ steps.strings.outputs.install-output-dir }} \
-          -DCMAKE_TOOLCHAIN_FILE=$EFFECTIVE_NDK_HOME/build/cmake/android.toolchain.cmake \
+          -DCMAKE_TOOLCHAIN_FILE="$local_toolchain_file" \
           -DANDROID_ABI=${{ matrix.config.abi }} \
           -DANDROID_PLATFORM=android-${{ matrix.config.api_level }} \
-          -DANDROID_NDK=$EFFECTIVE_NDK_HOME \
+          -DANDROID_NDK=$ANDROID_NDK_HOME \
           -DANDROID_STL=${{ matrix.config.cpp_stl }} \
           -S ${{ github.workspace }}
 
     - name: Build Android
-      shell: bash
-      run: |
-        cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -j$(nproc)
 
     - name: Install Android project
-      shell: bash
-      run: |
-        cmake --install ${{ steps.strings.outputs.build-output-dir }} --prefix ${{ steps.strings.outputs.install-output-dir }}
+      run: cmake --install ${{ steps.strings.outputs.build-output-dir }} --prefix ${{ steps.strings.outputs.install-output-dir }}
 
     - name: Upload Android build artifact
       uses: actions/upload-artifact@v4
       with:
-        name: build-android-${{ matrix.config.name }}-${{ matrix.build_type }}
+        name: build-android-${{ matrix.config.name }}-${{ matrix.build_type }} # e.g., build-android-api21-arm64-v8a-Release
         path: ${{ steps.strings.outputs.install-output-dir }}/
-  
+
   build-docs:
     name: Build Doxygen Documentation
     runs-on: ubuntu-latest
@@ -177,57 +219,59 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: 'recursive'
-          fetch-depth: 0 
+          submodules: 'recursive' # If your Doxyfile.in references files in submodules
+          fetch-depth: 0
 
       - name: Install Doxygen and Graphviz
         run: |
           sudo apt-get update
-          sudo apt-get install -y doxygen graphviz
+          sudo apt-get install -y --no-install-recommends doxygen graphviz
 
-      - name: Configure CMake
-        run: cmake -B ${{ github.workspace }}/build-docs -S ${{ github.workspace }} -DCMAKE_BUILD_TYPE=Release
+      - name: Configure CMake (for Doxygen target)
+        # This step is mainly to ensure Doxyfile is generated from Doxyfile.in
+        run: cmake -B ${{ github.workspace }}/build-doxygen -S ${{ github.workspace }}
 
       - name: Build Doxygen target
-        run: cmake --build ${{ github.workspace }}/build-docs --target doxygen
+        # This command assumes your Doxyfile is correctly configured and output paths are relative or handled by Doxygen
+        run: cmake --build ${{ github.workspace }}/build-doxygen --target doxygen
 
       - name: Upload Doxygen HTML
         uses: actions/upload-artifact@v4
         with:
           name: doxygen-html-docs
-          path: ${{ github.workspace }}/build-docs/docs/html/
-
+          # Path should match DOXYGEN_OUTPUT_DIR in CMakeLists.txt + HTML_OUTPUT in Doxyfile.in
+          # Assuming Doxyfile.in sets HTML_OUTPUT = html (or doxygen_html)
+          # and CMake's DOXYGEN_OUTPUT_DIR is build-doxygen/docs/
+          path: ${{ github.workspace }}/build-doxygen/docs/html/ # Adjust if your Doxyfile outputs to a different subfolder like 'doxygen_html'
   release:
     name: Create Release and Upload Assets
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    needs: [build, build_android, build-docs]
+    needs: [build_linux, build_android, build-docs] # Depends on all build jobs
     runs-on: ubuntu-latest
     permissions:
-      contents: write 
+      contents: write # Required to create releases and upload assets
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: 'recursive'
-          fetch-depth: 0 
+          fetch-depth: 0
 
-      - name: Set up MSYS2 (for zip, tar on Linux runner)
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: zip tar gh 
+      - name: Install Release Tools (gh, zip, tar)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gh zip tar
 
+      # Download all relevant build artifacts
       - name: Download Linux GCC Build Artifact
         uses: actions/download-artifact@v4
         with:
-          name: build-linux-gcc-Release
-          path: build-artifacts/linux-gcc-Release
+          name: build-linux-gcc-coverage
+          path: build-artifacts/linux-gcc-coverage
       - name: Download Linux Clang Build Artifact
         uses: actions/download-artifact@v4
         with:
-          name: build-linux-clang-Release
-          path: build-artifacts/linux-clang-Release
+          name: build-linux-clang-analysis
+          path: build-artifacts/linux-clang-analysis
       - name: Download Android API21 arm64-v8a Build Artifact
         uses: actions/download-artifact@v4
         with:
@@ -236,42 +280,53 @@ jobs:
       - name: Download Android API18 armeabi-v7a Build Artifact
         uses: actions/download-artifact@v4
         with:
-          name: build-android-api18-armeabi-v7a-Release 
+          name: build-android-api18-armeabi-v7a-Release
           path: build-artifacts/android-api18-armeabi-v7a-Release
       - name: Download Doxygen HTML Docs
         uses: actions/download-artifact@v4
         with:
           name: doxygen-html-docs
-          path: doxygen-docs
+          path: doxygen-docs-html # Contains the HTML output directory
+      - name: Download Coverage Report (GCC)
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report-gcc # Contains coverage-html-gcc directory
+          path: coverage-report-gcc-artifact
+      - name: Download Cppcheck Report (GCC)
+        uses: actions/download-artifact@v4
+        with:
+          name: cppcheck-report-gcc-coverage # Matched to build_linux artifact name
+          path: cppcheck-reports/gcc-coverage
+      - name: Download Cppcheck Report (Clang)
+        uses: actions/download-artifact@v4
+        with:
+          name: cppcheck-report-clang-analysis # Matched to build_linux artifact name
+          path: cppcheck-reports/clang-analysis
 
       - name: Determine Version and Release Settings
         id: version_settings
         shell: bash
         run: |
           IS_MANUAL_DISPATCH="${{ github.event_name == 'workflow_dispatch' }}"
-          echo "IS_MANUAL_DISPATCH: $IS_MANUAL_DISPATCH"
-
           if [[ "$IS_MANUAL_DISPATCH" == "true" ]]; then
             VERSION_NAME="${{ github.event.inputs.test_tag_name }}"
             if [[ -z "$VERSION_NAME" ]]; then
               VERSION_NAME="v0.0.0-manual-test-$(date +%Y%m%d%H%M%S)"
             fi
             DRAFT_RELEASE="true"
-            PRERELEASE_FLAG="true" 
+            PRERELEASE_FLAG="true" # Manual tests are typically prereleases
             RELEASE_NAME_PREFIX="Test Release: "
-            echo "Manual dispatch detected. Using test version: $VERSION_NAME"
           elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION_NAME="${{ github.ref_name }}"
-            DRAFT_RELEASE="false"
-            PRERELEASE_FLAG="false" 
+            VERSION_NAME="${{ github.ref_name }}" # e.g., v1.0.0
+            DRAFT_RELEASE="false" # Actual tags create non-draft releases
+            PRERELEASE_FLAG="false" # Assume not a prerelease unless tag indicates
             if [[ "$VERSION_NAME" == *-alpha* || "$VERSION_NAME" == *-beta* || "$VERSION_NAME" == *-rc* ]]; then
               PRERELEASE_FLAG="true"
             fi
-            RELEASE_NAME_PREFIX="Release: "
-            echo "Tag push detected. Using version: $VERSION_NAME"
+            RELEASE_NAME_PREFIX="" # No prefix for actual releases
           else
-            echo "ERROR: Not a 'v*' tag push or manual dispatch. This job should not have run under these conditions."
-            exit 1 
+            echo "Error: This job should only run on a 'v*' tag push or manual dispatch."
+            exit 1
           fi
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "DRAFT_RELEASE=$DRAFT_RELEASE" >> "$GITHUB_ENV"
@@ -280,42 +335,46 @@ jobs:
 
       - name: Create Release Packages
         shell: bash
-        env:
-          VERSION_NAME: ${{ env.VERSION_NAME }}
         run: |
           mkdir -p release_assets
-          VERSION_TAG_FOR_FILE=$(echo "$VERSION_NAME" | sed 's/[^a-zA-Z0-9._-]/_/g')
-          echo "Packaging for version: $VERSION_NAME (Filename suffix: $VERSION_TAG_FOR_FILE)"
+          # Sanitize tag for use in filenames (replaces non-alphanumeric with underscore)
+          VERSION_TAG_FOR_FILE=$(echo "${{ env.VERSION_NAME }}" | sed 's/[^a-zA-Z0-9._-]/_/g') #
+          echo "Packaging for version: ${{ env.VERSION_NAME }} (Filename suffix: $VERSION_TAG_FOR_FILE)"
 
-          if [ -d "doxygen-docs" ] && [ "$(ls -A doxygen-docs)" ]; then
-            zip -r release_assets/SecureStorage-docs-${VERSION_TAG_FOR_FILE}.zip doxygen-docs/
-            echo "Packaged Doxygen documentation."
-          else echo "Doxygen docs not found or empty."; fi
+          # Package Doxygen docs
+          if [ -d "doxygen-docs-html" ] && [ "$(ls -A doxygen-docs-html)" ]; then
+            zip -r release_assets/SecureStorage-docs-${VERSION_TAG_FOR_FILE}.zip doxygen-docs-html/
+          else echo "Doxygen docs not found or empty in doxygen-docs-html/."; fi
 
-          if [ -d "build-artifacts/linux-gcc-Release" ] && [ "$(ls -A build-artifacts/linux-gcc-Release)" ]; then
-            tar -czvf release_assets/SecureStorage-linux-gcc-${VERSION_TAG_FOR_FILE}.tar.gz -C build-artifacts/linux-gcc-Release .
-            echo "Packaged Linux GCC build."
-          else echo "Linux GCC build artifact not found or is empty."; fi
-
-          if [ -d "build-artifacts/linux-clang-Release" ] && [ "$(ls -A build-artifacts/linux-clang-Release)" ]; then
-            tar -czvf release_assets/SecureStorage-linux-clang-${VERSION_TAG_FOR_FILE}.tar.gz -C build-artifacts/linux-clang-Release .
-            echo "Packaged Linux Clang build."
-          else echo "Linux Clang build artifact not found or is empty."; fi
+          # Package Coverage report
+          if [ -d "coverage-report-gcc-artifact/coverage-html-gcc" ] && [ "$(ls -A coverage-report-gcc-artifact/coverage-html-gcc)" ]; then
+            zip -r release_assets/SecureStorage-coverage-gcc-${VERSION_TAG_FOR_FILE}.zip coverage-report-gcc-artifact/coverage-html-gcc/
+          else echo "GCC Coverage report not found or empty in coverage-report-gcc-artifact/coverage-html-gcc/."; fi
           
-          if [ -d "build-artifacts/android-api21-arm64-v8a-Release" ] && \
-             [ "$(ls -A build-artifacts/android-api21-arm64-v8a-Release)" ]; then
-            tar -czvf release_assets/SecureStorage-android-api21-arm64-v8a-${VERSION_TAG_FOR_FILE}.tar.gz -C build-artifacts/android-api21-arm64-v8a-Release .
-            echo "Packaged Android API21 arm64-v8a build."
-          else echo "Android API21 arm64-v8a build artifact not found or empty."; fi
+          # Package Cppcheck reports
+          if [ -d "cppcheck-reports" ] && [ "$(ls -A cppcheck-reports)" ]; then
+            zip -r release_assets/SecureStorage-cppcheck-reports-${VERSION_TAG_FOR_FILE}.zip cppcheck-reports/
+          else echo "Cppcheck reports not found or empty in cppcheck-reports/."; fi
 
-          if [ -d "build-artifacts/android-api18-armeabi-v7a-Release" ] && \
-             [ "$(ls -A build-artifacts/android-api18-armeabi-v7a-Release)" ]; then
-            tar -czvf release_assets/SecureStorage-android-api18-armeabi-v7a-${VERSION_TAG_FOR_FILE}.tar.gz -C build-artifacts/android-api18-armeabi-v7a-Release .
-            echo "Packaged Android API18 armeabi-v7a build."
-          else echo "Android API18 armeabi-v7a build artifact not found or empty."; fi
+          # Package Linux builds
+          for build_dir_outer in build-artifacts/linux-*; do
+            if [ -d "$build_dir_outer" ] && [ "$(ls -A "$build_dir_outer")" ]; then
+              # The actual install content is inside this directory
+              dir_name=$(basename "$build_dir_outer") # e.g., linux-gcc-coverage
+              tar -czvf release_assets/SecureStorage-${dir_name}-${VERSION_TAG_FOR_FILE}.tar.gz -C "$build_dir_outer" .
+            else echo "Build artifact directory $build_dir_outer not found or empty."; fi
+          done
+          
+          # Package Android builds
+          for build_dir_outer in build-artifacts/android-*; do
+            if [ -d "$build_dir_outer" ] && [ "$(ls -A "$build_dir_outer")" ]; then
+              dir_name=$(basename "$build_dir_outer") # e.g., android-api21-arm64-v8a-Release
+              tar -czvf release_assets/SecureStorage-${dir_name}-${VERSION_TAG_FOR_FILE}.tar.gz -C "$build_dir_outer" .
+            else echo "Build artifact directory $build_dir_outer not found or empty."; fi
+          done
           
           echo "Listing packaged assets:"
-          ls -R release_assets
+          ls -lR release_assets
 
       - name: Create GitHub Release
         id: create_release
@@ -323,41 +382,31 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ env.VERSION_NAME }} 
+          tag_name: ${{ env.VERSION_NAME }}
           release_name: ${{ env.FINAL_RELEASE_NAME }}
           body: |
-            Automated release for version ${{ env.VERSION_NAME }}.
+            Automated release for SecureStorage version ${{ env.VERSION_NAME }}.
             This is a ${{ env.DRAFT_RELEASE == 'true' && 'DRAFT' || 'FINAL' }} release.
             Prerelease status: ${{ env.PRERELEASE_FLAG }}.
-            Please find the attached assets for different platforms and the API documentation.
+
+            **Assets Included:**
+            - Build packages for Linux (GCC, Clang) and Android (API18, API21).
+            - Doxygen API documentation.
+            - Code coverage report (GCC).
+            - Cppcheck static analysis reports.
+
+            Refer to `README.md` for usage and `docs/project_proposal.md` for project details.
           draft: ${{ env.DRAFT_RELEASE }}
           prerelease: ${{ env.PRERELEASE_FLAG }}
 
-      - name: Upload Release Assets (using gh cli)
+      - name: Upload Release Assets
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION_NAME: ${{ env.VERSION_NAME }}
         run: |
-          echo "Target release tag for asset upload: $VERSION_NAME"
-          if [ -z "${{ steps.create_release.outputs.upload_url }}" ]; then
-            echo "Upload URL from create-release step is empty. Will rely on gh release upload to find tag $VERSION_NAME."
-          fi
-
-          ASSET_COUNT=0
           if [ -d "./release_assets" ] && [ "$(ls -A ./release_assets)" ]; then
-            for asset_path in ./release_assets/*; do
-              if [ -f "$asset_path" ]; then
-                asset_name=$(basename "$asset_path")
-                echo "Uploading $asset_name to release tag $VERSION_NAME..."
-                gh release upload "$VERSION_NAME" "$asset_path" --clobber
-                ASSET_COUNT=$((ASSET_COUNT + 1))
-              fi
-            done
-          fi
-
-          if [ "$ASSET_COUNT" -eq 0 ]; then
-            echo "No assets found in ./release_assets/ to upload."
+            gh release upload "${{ env.VERSION_NAME }}" ./release_assets/* --clobber
+            echo "Uploaded assets to release ${{ env.VERSION_NAME }}."
           else
-            echo "Uploaded $ASSET_COUNT assets to release $VERSION_NAME."
-          fi
+            echo "No assets found in ./release_assets/ to upload."
+          fi          

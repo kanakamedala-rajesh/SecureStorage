@@ -284,7 +284,32 @@ Generate HTML documentation from your source code comments.
 
 ## Continuous Integration (CI)
 
-This project uses GitHub Actions for CI. The workflow (`.github/workflows/ci.yml`) automates building, testing, static analysis, coverage reporting, and release packaging. While the CI provides automated checks, running the tools locally as described above is highly encouraged for faster feedback during development.
+## Continuous Integration (CI), Analysis, and Releases
+
+This project uses GitHub Actions for Continuous Integration (CI), code analysis, and release management. The workflow is defined in [ci.yml](.github/workflows/ci.yml).
+
+Key CI pipeline features include:
+
+* **Multi-Platform Builds:**
+  * Linux builds using GCC (with code coverage enabled) and Clang (with `clang-tidy` analysis enabled).
+  * Android builds for API levels 18 (armeabi-v7a) and 21 (arm64-v8a).
+* **Static Code Analysis:**
+  * **`clang-tidy`**: Integrated into the Clang build on Linux for in-depth static analysis. Configuration is typically managed via a `.clang-tidy` file in the repository root.
+  * **`cppcheck`**: Runs on Linux builds (both GCC and Clang configurations) to find potential bugs. Reports are uploaded as build artifacts.
+* **Code Coverage:**
+  * For GCC builds on Linux, code coverage is measured using `gcov`/`lcov`.
+  * HTML coverage reports are generated and uploaded as build artifacts, allowing review of test effectiveness.
+* **Documentation Generation:**
+  * `Doxygen` (with `Graphviz`) is used to generate API documentation from source code comments.
+  * The HTML documentation is uploaded as a build artifact.
+* **Unit Testing:**
+  * Tests are executed on Linux builds as part of the CI pipeline using CTest.
+* **Automated Releases:**
+  * When a tag matching the pattern `v*` (e.g., `v1.0.0`) is pushed, or when manually triggered via `workflow_dispatch`, a GitHub Release is created.
+  * The release includes packaged build artifacts for all supported platforms (Linux, Android), Doxygen documentation, code coverage reports, and static analysis reports.
+  * Manual triggers create draft releases for testing purposes.
+
+The CI workflow ensures that every push and pull request is automatically built and tested, and that releases are consistently packaged with all relevant artifacts.
 
 ## Basic Usage (`SecureStorageManager`)
 
