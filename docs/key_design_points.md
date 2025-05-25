@@ -9,13 +9,14 @@
 - validateDataId: A crucial (though simple here) method to prevent data_id from being misused for path traversal or creating invalid filenames. Production systems might need more robust validation (e.g., regex for allowed characters).
 
 - storeData Backup Strategy:
+    - storeData Backup Strategy:
     - Encrypts data.
-    - Writes to a temporary file (e.g., id.enc.tmp) using FileUtil::atomicWriteFile (which itself writes to .tmp.tmp then renames to .tmp).
+    - Writes to a temporary file (e.g., id.enc.tmp) using `FileUtil::atomicWriteFile`. `FileUtil::atomicWriteFile` implements a robust write-fsync-rename-fsync_dir strategy to ensure the data written to this temporary file is durable.
     - If a main_file (e.g., id.enc) exists:
         - Delete old backup_file (e.g., id.enc.bak) if it exists.
         - Rename main_file to backup_file.
-    - Rename the temp_file (now id.enc.tmp) to main_file.
-    - This ensures that there's always either a valid main_file or a backup_file (or both) if the operation is interrupted. The temporary file stage ensures the target files (main_file, backup_file) are not corrupted during the actual encryption writing.
+    - Rename the temporary file (now id.enc.tmp) to main_file.
+    - This ensures that there's always either a valid main_file or a backup_file (or both) if the operation is interrupted.
 
 - retrieveData Resilience:
     - Tries to read and decrypt the main_file.

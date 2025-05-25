@@ -11,10 +11,17 @@
 
 ### Important Notes for FileUtil.cpp:
 
-- fsync with std::ofstream: Standard C++ std::ofstream doesn't provide direct access to the file descriptor needed for fsync (on POSIX systems). The current atomicWriteFile relies on flush() and close() to eventually write data to disk. For true guaranteed persistence against power loss before the OS flushes its buffers, you'd typically need to use C-style file I/O (open, write, fsync, close) or platform-specific APIs. For many embedded Linux systems, a clean close is often sufficient, but fsync is more robust. I've commented on this in the code.
+- **Atomic Write Robustness (`atomicWriteFile`):**
+    - To ensure data integrity against power loss, `atomicWriteFile` now employs a more robust strategy on POSIX-compliant systems (like Linux, Android NDK targets):
+        1. Data is written to a temporary file using C-style file I/O (`open`, `write`).
+        2. `fsync()` is called on the temporary file's descriptor before closing it to ensure its contents are physically written to disk.
+        3. The temporary file is then atomically renamed to the target file path.
+        4. `fsync()` is called on the parent directory of the target file. This is critical to ensure that the directory entry changes from the `rename` operation are also persisted to disk, protecting against scenarios where the file data is written but the file system metadata isn't updated before a crash.
+    - This multi-step process, particularly the `fsync` on both the file and its directory, significantly enhances data resilience compared to relying solely on `std::ofstream::close()`.
+    - On Windows, a full equivalent (especially for directory `fsync`) is handled differently by the OS; the current POSIX-focused enhancement provides the strongest guarantees on the target Linux-based platforms.
 
-- createDirectories: The C++11 implementation is manual. C++17 std::filesystem::create_directories would simplify this significantly. The provided version iterates and creates directory components one by one. It assumes POSIX mkdir. Permissions are set to 0755.
+- createDirectories: The C++11 implementation is manual. C++17 std::filesystem::create_directories would simplify this significantly. The provided version iterates and creates directory components one by one. It assumes POSIX mkdir. Permissions are set to 0755 by default on POSIX.
 
 - Error Handling: strerror(errno) is used for system call error details.
 
-- Directory Listing: Uses POSIX opendir, readdir, closedir. It only lists regular files in the immediate directory.
+- Directory Listing: Uses POSIX opendir, readdir, closedir. It only lists regular files in the immediate directory by default.

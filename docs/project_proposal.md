@@ -210,9 +210,11 @@ App --> [SecureStorageManager] : Uses API
     * Temporary files during atomic write: `<final_path>._atomicwrite_tmp` (internal to `FileUtil`)
 * **Atomic Writes (`FileUtil::atomicWriteFile`):**
     1.  The directory for the final output file will be created if it doesn't exist.
-    2.  Data is first written to a unique temporary file (e.g., `final_path._atomicwrite_tmp`) in the same directory as the final target.
-    3.  The temporary file's content is flushed to the OS. (Note: True `fsync` for guaranteed disk persistence before rename is platform-specific and not implemented via standard C++ fstream; current implementation relies on `close()`.)
-    4.  The temporary file is then atomically renamed to the final target filename using `std::rename()`. This overwrites any existing file at the target path.
+    2.  Data is first written to a unique temporary file (e.g., `filepath + ".tmp"`) in the same directory as the final target using POSIX file operations.
+    3.  The temporary file's data is explicitly synchronized to the physical storage using `fsync()` on its file descriptor.
+    4.  The temporary file is closed.
+    5.  The temporary file is then atomically renamed to the final target filename using `std::rename()`. This overwrites any existing file at the target path.
+    6.  The parent directory of the final file is then explicitly synchronized using `fsync()` on its file descriptor to ensure the rename operation (directory entry update) is persistent. This step is crucial for preventing data loss if a power failure occurs immediately after the `rename`.
 * **Backup and Restore Strategy (`SecureStore::storeData`, `SecureStore::retrieveData`):**
     * **Storing Data:**
         1.  New data is encrypted.
@@ -353,6 +355,6 @@ The project has conceptually followed these phases:
 * **Risk:** Complexity of asynchronous testing for `FileWatcher`.
     * **Mitigation:** Use robust synchronization primitives in tests; allow for timing variations. (Addressed)
 * **Risk:** Ensuring true atomicity and data integrity across all power-fail scenarios.
-    * **Mitigation:** Careful implementation of atomic write and backup logic; extensive testing of these scenarios.
+    * **Mitigation:** Careful implementation of atomic write and backup logic; extensive testing of these scenarios. The atomic write logic now includes fsync on both the data file and its parent directory to enhance data integrity.
 
 This document provides a comprehensive overview of the SecureStorage library project. It should serve as a foundational reference for its development, features, and intended use.
