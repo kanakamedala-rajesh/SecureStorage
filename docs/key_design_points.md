@@ -47,4 +47,4 @@ Specific Events: Configured to watch for a comprehensive set of events including
 
 - Error Handling: Uses strerror(errno) for system call errors and logs appropriately.
 
-- Non-Blocking: inotify_init1(IN_NONBLOCK) and pipe() are used, and poll() manages waiting, which is essential for the stop mechanism to work without forced thread termination.
+- Non-Blocking: inotify_init() is used, and the returned file descriptor is set to non-blocking using fcntl(). This, along with a pipe and poll(), manages waiting and is essential for the stop mechanism to work without forced thread termination.

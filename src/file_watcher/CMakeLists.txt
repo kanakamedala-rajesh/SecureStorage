@@ -4,6 +4,9 @@ add_library(ss_file_watcher STATIC
     FileWatcher.cpp
 )
 
+# Add _GNU_SOURCE to expose inotify_init1 for older Android API levels
+target_compile_definitions(ss_file_watcher PRIVATE _GNU_SOURCE)
+
 # Public include for FileWatcher.h
 target_include_directories(ss_file_watcher PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}"

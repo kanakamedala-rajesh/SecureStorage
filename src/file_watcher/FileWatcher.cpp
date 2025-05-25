@@ -7,6 +7,7 @@
 #include <cstring>       // For strerror, memset
 #include <poll.h>        // For poll() to handle inotify FD and pipe FD
 #include <climits>       // For NAME_MAX
+#include <fcntl.h>
 
 // Define event buffer size (can be tuned)
 #define EVENT_BUF_LEN (10 * (sizeof(struct inotify_event) + NAME_MAX + 1))
@@ -29,7 +30,8 @@ FileWatcher::~FileWatcher() {
 }
 
 bool FileWatcher::start() {
-    if (m_stoppedByUser.load()) { // If stop() was called and completed
+    if (m_stoppedByUser.load()) { 
+        // If stop() was called and completed
         SS_LOG_WARN("FileWatcher: Attempted to start a watcher that has been definitively stopped. Create a new instance to monitor again.");
         return false;
     }
@@ -39,21 +41,38 @@ bool FileWatcher::start() {
     // This handles both initial start and prevents concurrent start calls from re-initializing.
     if (!m_isRunning.compare_exchange_strong(expected_is_running, true)) {
         // If m_isRunning was already true (either running or in process of starting by another thread)
+
         SS_LOG_WARN("FileWatcher: Start called but watcher is already running or being started.");
         return true; // Indicate it's (or will be) running
     }
-    // At this point, m_isRunning is true, and we are responsible for initialization.
 
-    m_inotifyFd = inotify_init1(IN_NONBLOCK);
+    m_inotifyFd = inotify_init();
     if (m_inotifyFd < 0) {
-        SS_LOG_ERROR("FileWatcher: Failed to initialize inotify: " << strerror(errno));
+        SS_LOG_ERROR("FileWatcher: Failed to initialize inotify (inotify_init): " << strerror(errno));
         m_isRunning.store(false);
         return false;
+    } else {
+        // Set the inotify file descriptor to non-blocking
+        int flags = fcntl(m_inotifyFd, F_GETFL, 0);
+        if (flags == -1) {
+            SS_LOG_ERROR("FileWatcher: fcntl(F_GETFL) failed for inotify fd: " << strerror(errno));
+            close(m_inotifyFd);
+            m_inotifyFd = -1;
+            m_isRunning.store(false);
+            return false;
+        }
+        if (fcntl(m_inotifyFd, F_SETFL, flags | O_NONBLOCK) == -1) {
+            SS_LOG_ERROR("FileWatcher: fcntl(F_SETFL, O_NONBLOCK) failed for inotify fd: " << strerror(errno));
+            close(m_inotifyFd);
+            m_inotifyFd = -1;
+            m_isRunning.store(false);
+            return false;
+        }
     }
 
     if (pipe(m_pipeFd) < 0) {
         SS_LOG_ERROR("FileWatcher: Failed to create pipe: " << strerror(errno));
-        close(m_inotifyFd);
+        close(m_inotifyFd); // Close inotify fd if pipe creation fails
         m_inotifyFd = -1;
         m_isRunning.store(false);
         return false;

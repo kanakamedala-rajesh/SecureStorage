@@ -81,19 +81,58 @@ offline.
 
 This project uses GitHub Actions for Continuous Integration (CI). The CI pipeline, defined in `.github/workflows/ci.yml`, automatically performs the following:
 
-*   **Builds on Multiple Platforms:** Compiles the `SecureStorage` library and its examples on:
-    *   Windows (latest, MSVC)
-    *   Linux (latest, GCC)
-    *   Linux (latest, Clang)
-*   **Runs Unit Tests:** Executes the test suite on all supported platforms.
-*   **Generates Doxygen Documentation:** Builds the HTML Doxygen documentation.
-*   **Creates Releases:** When a tag matching the pattern `v*` (e.g., `v1.0.0`, `v1.2.3-beta`) is pushed:
-    *   Downloads build artifacts (binaries for each platform) and Doxygen documentation.
-    *   Packages these into `.zip` (for Windows and docs) and `.tar.gz` (for Linux) archives.
-    *   Creates a GitHub Release with the tag.
-    *   Uploads the packaged archives as release assets.
+* **Builds on Multiple Platforms/Architectures:** Compiles the `SecureStorage` library and its examples on:
+    * Linux (latest, GCC, Release)
+    * Linux (latest, Clang, Release)
+    * Android API 21 (arm64-v8a, using a recent NDK like r25c, Release)
+    * Android API 18 (armeabi-v7a, using a recent NDK like r25c, Release). *Note: Modern NDKs have a minimum supported API level (e.g., API 19 for NDK r25c). While targeting API 18 for the manifest is possible, the underlying system headers and libraries used during compilation will correspond to the NDK's minimum (e.g., API 19).*
+* **Runs Unit Tests:** Executes the test suite on supported host platforms (Linux).
+* **Generates Doxygen Documentation:** Builds the HTML Doxygen documentation.
+* **Creates Releases:** When a tag matching the pattern `v*` (e.g., `v1.0.0`, `v1.2.3-beta`) is pushed OR when manually triggered for testing (see section below):
+    * Downloads build artifacts (installable packages for each platform/architecture) and Doxygen documentation.
+    * Packages these into `.tar.gz` (for Linux and Android builds) and `.zip` (for Doxygen documentation) archives.
+    * Creates a GitHub Release with the tag.
+    * Uploads the packaged archives as release assets.
 
-The build artifacts (installable packages) and Doxygen documentation are made available with each release on GitHub.
+The build artifacts (installable packages containing headers, libraries, and potentially examples) and Doxygen documentation are made available with each release on GitHub.
+
+### Testing the Release Process
+
+The GitHub Actions workflow is designed to allow testing of the release and tagging mechanism without making an actual production release. This is achieved using the `workflow_dispatch` trigger.
+
+**Steps to Manually Test a Release:**
+
+1.  **Navigate to Actions:** Go to your repository's "Actions" tab on GitHub.
+2.  **Select Workflow:** In the left sidebar, click on the "SecureStorage Build on multiple platforms" workflow.
+3.  **Run Workflow:** You will see a "Run workflow" button appear on the right. Click it.
+4.  **Input Test Tag (Optional):**
+    * A dropdown will appear allowing you to "Run workflow from branch 'main'" (or your selected branch).
+    * You'll see an input field labeled "Tag name for test release (e.g., v0.0.0-test). If empty, a default test tag is used."
+    * You can enter a custom tag name here for your test release (e.g., `v1.2.3-test-my-feature`).
+    * If you leave it blank, it will use a default like `v0.0.0-manual-test-TIMESTAMP`.
+5.  **Execute:** Click the green "Run workflow" button.
+
+**What Happens During a Manual Test Release:**
+
+* All the build jobs (Linux, Android, Docs) will run as usual, producing their respective artifacts.
+* The `release` job will then proceed:
+    * It will use the test tag name you provided (or the default) instead of an actual Git tag from a push.
+    * It will create a **Draft Release** on GitHub. This means the release is created but not publicly visible until you explicitly publish it.
+    * All build artifacts (Linux tar.gz, Android tar.gz, Doxygen zip) will be packaged and uploaded to this draft release.
+    * The release name will be prefixed with "Test Release: ".
+
+**Verification Steps:**
+
+1.  **Monitor Workflow:** Observe the workflow run in the Actions tab. Ensure all build jobs and the release job complete successfully.
+2.  **Check Draft Release:**
+    * Go to your repository's "Releases" page.
+    * You should find a new **draft** release matching the test tag name.
+    * Verify that the release notes look correct.
+    * Check the assets attached to the draft release. Ensure all expected archives are present and their names correctly reflect the test version.
+    * Download and inspect assets to ensure correct packaging.
+3.  **Cleanup:** Delete the draft release from the GitHub Releases page after verification.
+
+This manual trigger allows thorough testing of the release automation before pushing an actual `v*` tag for a production release.
 
 ## Basic Usage (`SecureStorageManager`)
 
