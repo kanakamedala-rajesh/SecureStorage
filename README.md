@@ -1,5 +1,11 @@
 # SecureStorage Library
 
+## System Requirements and Project Proposal
+
+Refer this document for complete details, requirements and specifications followed in this implementation.
+
+[PROJECT PROPOSAL/SYSTEM REQUIREMENTS](docs/project_proposal.md)
+
 ## Overview
 
 The SecureStorage library provides C++11 compatible mechanisms for robustly encrypting,
@@ -37,44 +43,53 @@ offline.
 * (Optional) Doxygen and Graphviz (dot) for generating documentation.
 * (Optional) Google Test (development libraries). The build system will attempt to download and build Google Test automatically using CMake's `WorkspaceContent` for running unit tests.
 
-
 ## Build Instructions
 
-1.  **Clone the repository (if applicable):**
+1. **Clone the repository (if applicable):**
+
     ```bash
     git clone <repository_url>
     cd SecureStorage
     ```
 
-2.  **Configure with CMake:**
+2. **Configure with CMake:**
+
     ```bash
     mkdir build
     cd build
     cmake ..
     ```
+
     *Mbed TLS and Google Test will be fetched and configured at this stage if not already present.*
 
-3.  **Build the library and examples:**
+3. **Build the library and examples:**
+
     ```bash
     cmake --build .
     ```
+
     Or, on Linux/macOS:
+
     ```bash
     make -j$(nproc)
     ```
 
-4.  **(Optional) Run Tests:**
+4. **(Optional) Run Tests:**
+
     ```bash
     cd tests
     ctest -V
     ```
+
     *(Ensure tests are enabled in your CMake configuration if you want to run them).*
 
-5.  **(Optional) Generate Documentation:**
+5. **(Optional) Generate Documentation:**
     If Doxygen is set up:
+
     ```bash
     cmake --build . --target doxygen
     ```
+
     The documentation will typically be generated in `build/docs/doxygen_html/index.html`.
 
 ## Continuous Integration & Releases
@@ -211,20 +226,24 @@ See also the examples/ directory for a command-line encryption/decryption utilit
 Detailed API documentation can be generated using Doxygen. If you have built the `doxygen` target as described in the build instructions, you can find the documentation at `build/docs/doxygen_html/index.html`.
 
 ## Security Model
-- Key Derivation: Encryption keys are derived at runtime using HKDF (HMAC-SHA256) from the provided device serial number and internal salts. The actual encryption key is not stored on the device, enhancing security.
-- Encryption Algorithm: AES-256-GCM is used, providing strong 256-bit symmetric encryption with Galois/Counter Mode, which includes authentication (GMAC) to ensure data integrity and authenticity.
-- Serial Number: The security of this system heavily relies on the uniqueness and inaccessibility of the device serial number to unauthorized parties.
-- Offline: The library is designed for devices without internet access, reducing exposure to network-based attacks.
 
+* Key Derivation: Encryption keys are derived at runtime using HKDF (HMAC-SHA256) from the provided device serial number and internal salts. The actual encryption key is not stored on the device, enhancing security.
+
+* Encryption Algorithm: AES-256-GCM is used, providing strong 256-bit symmetric encryption with Galois/Counter Mode, which includes authentication (GMAC) to ensure data integrity and authenticity.
+
+* Serial Number: The security of this system heavily relies on the uniqueness and inaccessibility of the device serial number to unauthorized parties.
+
+* Offline: The library is designed for devices without internet access, reducing exposure to network-based attacks.
 
 ## File Watcher
+
 The integrated file watcher monitors the root storage directory specified during SecureStorageManager initialization. It logs events such as:
 
-- IN_CLOSE_WRITE: A file was closed after being opened for writing.
-- IN_MODIFY: A file's content was modified.
-- IN_DELETE: A file was deleted from the directory.
-- IN_CREATE: A new file was created in the directory.
-- Other relevant events like attribute changes or moves.
+* IN_CLOSE_WRITE: A file was closed after being opened for writing.
+* IN_MODIFY: A file's content was modified.
+* IN_DELETE: A file was deleted from the directory.
+* IN_CREATE: A new file was created in the directory.
+* Other relevant events like attribute changes or moves.
 
 Logs from the file watcher use the library's internal logger (SS_LOG_INFO).
 
@@ -234,9 +253,9 @@ Functions typically return a SecureStorage::Error::Errc enum value, which is com
 ## Backup and Restore
 The SecureStore component (used by SecureStorageManager) implements a backup strategy:
 
-- When data is stored (storeData), if a previous version of the data exists, it is typically moved to a backup file (e.g., data_id.enc.bak).
-- When data is retrieved (retrieveData), if the primary data file (data_id.enc) is missing or fails decryption, the library automatically attempts to use the backup file.
-- If the backup file is successfully used, an attempt is made to restore it as the primary file.
+* When data is stored (storeData), if a previous version of the data exists, it is typically moved to a backup file (e.g., data_id.enc.bak).
+* When data is retrieved (retrieveData), if the primary data file (data_id.enc) is missing or fails decryption, the library automatically attempts to use the backup file.
+* If the backup file is successfully used, an attempt is made to restore it as the primary file.
 
 ## Key Design Points
 Some of the key design points are listed in docs directory, see the [KEY_DESIGN_POINTS](docs/key_design_points.md) file for details.
@@ -251,11 +270,11 @@ Some of the important notes for understanding this implementation are listed in 
 ## Contributing
 
 We welcome contributions! Please follow these general guidelines:
--   Fork the repository.
--   Create a new branch for your feature or bug fix.
--   Ensure your code adheres to the existing style.
--   Write unit tests for new functionality.
--   Open a pull request with a clear description of your changes.
+*   Fork the repository.
+*   Create a new branch for your feature or bug fix.
+*   Ensure your code adheres to the existing style.
+*   Write unit tests for new functionality.
+*   Open a pull request with a clear description of your changes.
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
