@@ -97,18 +97,41 @@ offline.
 This project uses GitHub Actions for Continuous Integration (CI). The CI pipeline, defined in `.github/workflows/ci.yml`, automatically performs the following:
 
 * **Builds on Multiple Platforms:** Compiles the `SecureStorage` library and its examples on:
-    *   Windows (latest, MSVC)
-    *   Linux (latest, GCC)
-    *   Linux (latest, Clang)
-*   **Runs Unit Tests:** Executes the test suite on all supported platforms.
-*   **Generates Doxygen Documentation:** Builds the HTML Doxygen documentation.
-*   **Creates Releases:** When a tag matching the pattern `v*` (e.g., `v1.0.0`, `v1.2.3-beta`) is pushed:
-    *   Downloads build artifacts (binaries for each platform) and Doxygen documentation.
-    *   Packages these into `.zip` (for Windows and docs) and `.tar.gz` (for Linux) archives.
-    *   Creates a GitHub Release with the tag.
-    *   Uploads the packaged archives as release assets.
+    * Windows (latest, MSVC)
+    * Linux (latest, GCC)
+    * Linux (latest, Clang)
+* **Runs Unit Tests:** Executes the test suite on all supported platforms.
+* **Generates Doxygen Documentation:** Builds the HTML Doxygen documentation.
+* **Creates Releases (on `v*` tags):** When a tag matching the pattern `v*` (e.g., `v1.0.0`, `v1.2.3-beta`) is pushed:
+    * Downloads build artifacts (binaries for each platform) and Doxygen documentation.
+    * Packages these into `.zip` (for Windows and docs) and `.tar.gz` (for Linux) archives.
+    * Creates a GitHub Release with the tag.
+    * Uploads the packaged archives as release assets.
+* **Testing Release Packaging (Manual Trigger):** The CI workflow can also be manually triggered to test the release packaging process without creating an actual GitHub release. See the "Testing CI Release Process" section below.
 
-The build artifacts (installable packages) and Doxygen documentation are made available with each release on GitHub.
+The build artifacts (installable packages) and Doxygen documentation are made available with each official release on GitHub.
+
+## Testing CI Release Process (Manual Trigger)
+
+You can test the release packaging scripts and process without creating an official GitHub release by manually triggering the CI workflow.
+
+1.  **Navigate to Actions:** Go to the "Actions" tab of your GitHub repository.
+2.  **Select Workflow:** In the left sidebar, click on the "SecureStorage Build on multiple platforms" workflow.
+3.  **Run Workflow:** Click the "Run workflow" dropdown button (usually on the right side).
+4.  **Configure Inputs:**
+    * **`Simulate a tag name for testing`**: (Optional) You can enter a tag name here (e.g., `v1.0.0-my-test`) that your packaging scripts will use for naming the generated artifacts. If left empty, a default test tag like `v0.0.0-testdispatch-<timestamp>` will be used.
+    * **`DANGER: If true, this manual run will attempt a full production release`**: **For testing, ensure this is set to `false` (which is the default).** Setting this to `true` will make the manual run attempt to create an actual GitHub release.
+5.  **Execute:** Click the "Run workflow" button at the bottom of the dropdown.
+
+**Expected Outcome for a Test Run:**
+* The `build`, `build-docs`, and `release` jobs will run.
+* The `release` job will download build artifacts and Doxygen documentation.
+* It will then package these artifacts (e.g., into `.zip` and `.tar.gz` files) using the simulated or default test tag name.
+* Instead of creating a GitHub Release, these packaged files will be uploaded as a single workflow artifact (e.g., `test-release-packages-vX.Y.Z-test`).
+* You can download this workflow artifact from the summary page of the completed workflow run to inspect the packages and verify your release scripts.
+* No actual release will be published to your repository's "Releases" page.
+
+This process allows you to verify that your versioning, packaging, and artifact structuring for releases are working correctly before pushing an actual `v*` tag.
 
 ## Basic Usage (`SecureStorageManager`)
 
