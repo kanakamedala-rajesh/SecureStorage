@@ -1,5 +1,6 @@
 #include "SecureStore.h"
-#include "Logger.h"  // For SS_LOG_ macros
+#include "utils/ISystemIdProvider.h" // ADDED
+#include "utils/Logger.h" // For SS_LOG_ macros (Corrected include path for Logger if needed, assuming utils/Logger.h)
 #include <algorithm> // For std::remove_if for data_id sanitization (not used yet)
 #include <cerrno>    // For errno
 #include <cstdio>    // For std::rename
@@ -8,19 +9,18 @@
 namespace SecureStorage {
 namespace Storage {
 
-SecureStore::SecureStore(std::string rootStoragePath, std::string deviceSerialNumber)
-    : m_rootStoragePath(std::move(rootStoragePath)), m_keyProvider(nullptr), // Initialize later
-      m_encryptor(nullptr),                                                  // Initialize later
+SecureStore::SecureStore(std::string rootStoragePath,
+                         const Utils::ISystemIdProvider& systemIdProvider) // MODIFIED
+    : m_rootStoragePath(std::move(rootStoragePath)),
+      m_keyProvider(nullptr),
+      m_encryptor(nullptr),
       m_initialized(false) {
 
     if (m_rootStoragePath.empty()) {
         SS_LOG_ERROR("SecureStore: Root storage path cannot be empty.");
         return; // m_initialized remains false
     }
-    if (deviceSerialNumber.empty()) {
-        SS_LOG_ERROR("SecureStore: Device serial number cannot be empty for key derivation.");
-        return; // m_initialized remains false
-    }
+    // REMOVED: deviceSerialNumber.empty() check, as systemIdProvider is now responsible
 
     // Ensure root path ends with a slash for consistent path joining
     if (m_rootStoragePath.back() != '/' && m_rootStoragePath.back() != '\\') {
@@ -38,7 +38,9 @@ SecureStore::SecureStore(std::string rootStoragePath, std::string deviceSerialNu
     // Initialize crypto components
     // Using C++11 style `new` for unique_ptr as make_unique is C++14
     m_keyProvider = std::unique_ptr<Crypto::KeyProvider>(
-        new Crypto::KeyProvider(std::move(deviceSerialNumber)));
+        new Crypto::KeyProvider(systemIdProvider)); // MODIFIED (passing the provider)
+                                                    // Assuming default salt and info are handled by KeyProvider's constructor
+
     m_encryptor = std::unique_ptr<Crypto::Encryptor>(new Crypto::Encryptor()); // Uses default seed
 
     // Derive and store the master encryption key
@@ -46,7 +48,7 @@ SecureStore::SecureStore(std::string rootStoragePath, std::string deviceSerialNu
         m_keyProvider->getEncryptionKey(m_masterKey, Crypto::AES_GCM_KEY_SIZE_BYTES);
     if (keyErr != Error::Errc::Success) {
         SS_LOG_ERROR("SecureStore: Failed to derive master encryption key (Error: "
-                     << static_cast<int>(keyErr) << ")");
+                     << Error::GetErrorMessage(keyErr) << ")"); // Use GetErrorMessage
         m_keyProvider.reset(); // Release resources if init fails partially
         m_encryptor.reset();
         return; // m_initialized remains false
@@ -211,7 +213,7 @@ Error::Errc SecureStore::retrieveData(const std::string &data_id,
             SS_LOG_WARN(
                 "Failed to decrypt main data file '"
                 << main_file << "' for id '" << data_id << "'. Error: "
-                << Error::SecureStorageErrorCategory::get().message(static_cast<int>(main_dec_err))
+                << Error::GetErrorMessage(main_dec_err) // Using GetErrorMessage
                 << " (" << static_cast<int>(main_dec_err) << "). Will attempt backup.");
             // Consider deleting the corrupted main file to prevent reuse,
             // especially if backup retrieval is successful.
@@ -222,7 +224,7 @@ Error::Errc SecureStore::retrieveData(const std::string &data_id,
         SS_LOG_WARN(
             "Failed to read main data file '"
             << main_file << "' for id '" << data_id << "'. Error: "
-            << Error::SecureStorageErrorCategory::get().message(static_cast<int>(main_read_err))
+            << Error::GetErrorMessage(main_read_err) // Using GetErrorMessage
             << " (" << static_cast<int>(main_read_err) << "). Will attempt backup.");
     }
 
@@ -242,7 +244,7 @@ Error::Errc SecureStore::retrieveData(const std::string &data_id,
         SS_LOG_ERROR(
             "Failed to read backup data file '"
             << backup_file << "' for id '" << data_id << "'. Error: "
-            << Error::SecureStorageErrorCategory::get().message(static_cast<int>(backup_read_err))
+            << Error::GetErrorMessage(backup_read_err) // Using GetErrorMessage
             << " (" << static_cast<int>(backup_read_err) << "). Data not found.");
         return Error::Errc::DataNotFound; // Main failed (read or decrypt), and backup read failed.
     }
@@ -253,7 +255,7 @@ Error::Errc SecureStore::retrieveData(const std::string &data_id,
         SS_LOG_ERROR(
             "Failed to decrypt backup data file '"
             << backup_file << "' for id '" << data_id << "'. Error: "
-            << Error::SecureStorageErrorCategory::get().message(static_cast<int>(backup_dec_err))
+            << Error::GetErrorMessage(backup_dec_err) // Using GetErrorMessage
             << " (" << static_cast<int>(backup_dec_err) << "). Data recovery failed.");
         return backup_dec_err; // Main failed, backup decryption failed.
     }
@@ -279,7 +281,7 @@ Error::Errc SecureStore::retrieveData(const std::string &data_id,
         SS_LOG_WARN(
             "Failed to restore backup data to main file '"
             << main_file << "'. Error: "
-            << Error::SecureStorageErrorCategory::get().message(static_cast<int>(write_main_err))
+            << Error::GetErrorMessage(write_main_err) // Using GetErrorMessage
             << " (" << static_cast<int>(write_main_err)
             << "). Main file may be missing or outdated for next read.");
         // Data is still successfully retrieved for this call, this is just a warning about the

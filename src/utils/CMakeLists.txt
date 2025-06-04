@@ -2,6 +2,7 @@ add_library(ss_utils STATIC
     Logger.cpp
     Error.cpp
     FileUtil.cpp
+    SystemIdProvider.cpp
 )
 
 target_include_directories(ss_utils PUBLIC
@@ -17,6 +18,8 @@ target_compile_features(ss_utils PUBLIC cxx_std_11)
 install(FILES
     Error.h
     FileUtil.h
+    ISystemIdProvider.h
     Logger.h
+    SystemIdProvider.h
     DESTINATION include/utils # Installs to <prefix>/include/utils
 )

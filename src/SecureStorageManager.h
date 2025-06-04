@@ -136,8 +136,9 @@ public:
      * If nullptr, default logging by FileWatcher will occur.
      */
     SecureStorageManager(
-        const std::string &storagePath, const std::string &keyFilePath,
-        FileWatcher::EventCallback callback); // MODIFIED: Was 'int pollingIntervalMs'
+        const std::string &storagePath,
+        // const std::string &keyFilePath, // This was deviceSerialNumber, now removed
+        FileWatcher::EventCallback callback);
 
     /**
      * @brief Destructor. Cleans up resources.

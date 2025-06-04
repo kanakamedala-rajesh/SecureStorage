@@ -2,12 +2,14 @@
 #include "file_watcher/FileWatcher.h" // FileWatcher definition
 #include "storage/SecureStore.h"      // Definition of SecureStore
 #include "utils/Logger.h"             // For SS_LOG macros
+#include "utils/SystemIdProvider.h"   // ADDED
 
 namespace SecureStorage {
 
 // PImpl (Pointer to Implementation) class
 class SecureStorageManager::SecureStorageManagerImpl {
 public:
+    Utils::SystemIdProvider systemIdProviderInstance; // Store instance
     std::unique_ptr<Storage::SecureStore> secureStoreInstance;
     std::unique_ptr<FileWatcher::FileWatcher> fileWatcherInstance; // Future addition
     bool isManagerInitialized;
@@ -15,19 +17,22 @@ public:
 
     // Constructor initializes the SecureStore and integrates FileWatcher
     SecureStorageManagerImpl(const std::string &rootStoragePath,
-                             const std::string &deviceSerialNumber,
-                             FileWatcher::EventCallback fileWatcherCallback =
+                                 // const std::string &deviceSerialNumber, // REMOVED
+                                 FileWatcher::EventCallback fileWatcherCallback =
                                  nullptr // Optional callback for file watcher events
                              )
-        : secureStoreInstance(nullptr), fileWatcherInstance(nullptr), isManagerInitialized(false),
+        : /* systemIdProviderInstance initialized by default constructor */ // MODIFIED
+          secureStoreInstance(nullptr), fileWatcherInstance(nullptr), isManagerInitialized(false),
           isFileWatcherActive(false) {
 
         SS_LOG_INFO("SecureStorageManagerImpl: Initializing with root path: '"
-                    << rootStoragePath << "' and device serial: '"
-                    << (deviceSerialNumber.empty() ? "EMPTY" : "PRESENT") << "'");
+                        << rootStoragePath << "'");
+            // Removed log of deviceSerialNumber
 
+            // systemIdProviderInstance is now a member, so it's already constructed.
+            // We pass it by reference to SecureStore.
         secureStoreInstance = std::unique_ptr<Storage::SecureStore>(
-            new Storage::SecureStore(rootStoragePath, deviceSerialNumber));
+            new Storage::SecureStore(rootStoragePath, systemIdProviderInstance)); // MODIFIED
 
         if (secureStoreInstance && secureStoreInstance->isInitialized()) {
             isManagerInitialized = true;
@@ -87,11 +92,11 @@ public:
 
 // --- SecureStorageManager Public API Implementation ---
 
-SecureStorageManager::SecureStorageManager(const std::string &rootStoragePath,
-                                           const std::string &deviceSerialNumber,
-                                           FileWatcher::EventCallback fileWatcherCallback = nullptr)
-    : m_impl(
-          new SecureStorageManagerImpl(rootStoragePath, deviceSerialNumber, fileWatcherCallback)) {
+SecureStorageManager::SecureStorageManager(
+        const std::string &rootStoragePath,
+        // const std::string &deviceSerialNumber, // REMOVED
+        FileWatcher::EventCallback fileWatcherCallback)
+    : m_impl(new SecureStorageManagerImpl(rootStoragePath, /* REMOVED deviceSerialNumber, */ fileWatcherCallback)) {
 }
 
 SecureStorageManager::~SecureStorageManager() = default; // Needed for std::unique_ptr<PImpl>

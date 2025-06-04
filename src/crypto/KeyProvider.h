@@ -2,6 +2,7 @@
 #define SS_KEY_PROVIDER_H
 
 #include "Error.h" // For SecureStorage::Error::Errc
+#include "utils/ISystemIdProvider.h" // Added
 #include <cstddef> // For size_t
 #include <memory>  // For std::unique_ptr
 #include <string>
@@ -43,7 +44,8 @@ public:
      * @param info An info string for HKDF context separation. If empty, a default info string is
      * used.
      */
-    explicit KeyProvider(std::string deviceSerialNumber, std::string salt = HKDF_SALT_DEFAULT,
+    explicit KeyProvider(const Utils::ISystemIdProvider& systemIdProvider, // Changed
+                         std::string salt = HKDF_SALT_DEFAULT,
                          std::string info = HKDF_INFO_DEFAULT);
 
     ~KeyProvider(); // Required for pImpl or if Mbed TLS contexts are members
@@ -69,7 +71,8 @@ private:
     class Impl;
     std::unique_ptr<Impl> m_impl;
 
-    std::string m_deviceSerialNumber;
+    // std::string m_deviceSerialNumber; // Removed
+    const Utils::ISystemIdProvider& m_systemIdProvider; // Added
     std::string m_salt;
     std::string m_info;
 };

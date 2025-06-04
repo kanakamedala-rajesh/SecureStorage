@@ -10,6 +10,10 @@
 #include <vector>
 
 namespace SecureStorage {
+namespace Utils { // Forward declaration
+    class ISystemIdProvider;
+}
+
 namespace Storage {
 
 // Define file extensions consistently
@@ -35,7 +39,8 @@ public:
      * stored. This directory will be created if it doesn't exist.
      * @param deviceSerialNumber The unique serial number of the device, used for key derivation.
      */
-    SecureStore(std::string rootStoragePath, std::string deviceSerialNumber);
+    SecureStore(std::string rootStoragePath,
+                const Utils::ISystemIdProvider& systemIdProvider); // MODIFIED
 
     ~SecureStore() = default;
 
