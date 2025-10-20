@@ -1,6 +1,3 @@
-# Enable testing for this project (if not already enabled globally)
-enable_testing()
-
 # Add the subdirectory for utility tests
 add_subdirectory(utils)
 add_subdirectory(crypto)

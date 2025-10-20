@@ -4,6 +4,8 @@
 #include <mbedtls/md.h>      // For mbedtls_md_info_from_type
 #include <mbedtls/error.h>   // For mbedtls_strerror
 #include <memory>            // For std::unique_ptr
+#include <utility>           // For std::move
+#include "FileUtil.h"        // For readFile
 
 namespace SecureStorage {
 namespace Crypto {
@@ -20,13 +22,17 @@ public:
     ~Impl() = default; // Ensure proper cleanup if contexts were added
 };
 
-KeyProvider::KeyProvider(std::string deviceSerialNumber, std::string salt, std::string info)
+KeyProvider::KeyProvider(std::string deviceSerialNumber, std::string deviceSecretFilePath, std::string salt, std::string info)
     : m_impl(new Impl()),
       m_deviceSerialNumber(std::move(deviceSerialNumber)),
+      m_deviceSecretFilePath(std::move(deviceSecretFilePath)),
       m_salt(std::move(salt)),
       m_info(std::move(info)) {
     if (m_deviceSerialNumber.empty()) {
         SS_LOG_ERROR("KeyProvider initialized with an empty device serial number.");
+    }
+    if (m_deviceSecretFilePath.empty()) {
+        SS_LOG_ERROR("KeyProvider initialized with an empty device secret file path.");
     }
     if (m_salt.empty()) {
         SS_LOG_WARN("KeyProvider using an empty salt. This is not recommended. Default was likely intended.");
@@ -44,6 +50,7 @@ KeyProvider::~KeyProvider() = default; // Needed for std::unique_ptr<Impl>
 KeyProvider::KeyProvider(KeyProvider&& other) noexcept
     : m_impl(std::move(other.m_impl)),
       m_deviceSerialNumber(std::move(other.m_deviceSerialNumber)),
+      m_deviceSecretFilePath(std::move(other.m_deviceSecretFilePath)),
       m_salt(std::move(other.m_salt)),
       m_info(std::move(other.m_info)) {}
 
@@ -52,6 +59,7 @@ KeyProvider& KeyProvider::operator=(KeyProvider&& other) noexcept {
     if (this != &other) {
         m_impl = std::move(other.m_impl);
         m_deviceSerialNumber = std::move(other.m_deviceSerialNumber);
+        m_deviceSecretFilePath = std::move(other.m_deviceSecretFilePath);
         m_salt = std::move(other.m_salt);
         m_info = std::move(other.m_info);
     }
@@ -64,10 +72,30 @@ Error::Errc KeyProvider::getEncryptionKey(std::vector<unsigned char>& outputKey,
         SS_LOG_ERROR("Cannot derive key: Device serial number is empty.");
         return Error::Errc::InvalidArgument;
     }
+    if (m_deviceSecretFilePath.empty()) {
+        SS_LOG_ERROR("Cannot derive key: Device secret file path is empty.");
+        return Error::Errc::InvalidArgument;
+    }
     if (keyLengthBytes == 0) {
         SS_LOG_ERROR("Cannot derive key: Requested key length is 0.");
         return Error::Errc::InvalidArgument;
     }
+
+    // Read the device secret from the file
+    std::string deviceSecret;
+    Error::Errc readErr = Utils::FileUtil::readFileIntoString(m_deviceSecretFilePath, deviceSecret);
+    if (readErr != Error::Errc::Success) {
+        SS_LOG_ERROR("Failed to read device secret file: " << m_deviceSecretFilePath);
+        return readErr;
+    }
+
+    if (deviceSecret.empty()) {
+        SS_LOG_ERROR("Device secret file is empty: " << m_deviceSecretFilePath);
+        return Error::Errc::InvalidFile;
+    }
+
+    // Combine serial number and device secret to form the IKM
+    std::string ikm_material = m_deviceSerialNumber + deviceSecret;
 
     const mbedtls_md_info_t* md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     if (md_info == nullptr) {
@@ -77,9 +105,9 @@ Error::Errc KeyProvider::getEncryptionKey(std::vector<unsigned char>& outputKey,
 
     outputKey.resize(keyLengthBytes);
 
-    // IKM: Input Keying Material (device serial number)
-    const unsigned char* ikm = reinterpret_cast<const unsigned char*>(m_deviceSerialNumber.data());
-    size_t ikm_len = m_deviceSerialNumber.length();
+    // IKM: Input Keying Material (device serial number + device secret)
+    const unsigned char* ikm = reinterpret_cast<const unsigned char*>(ikm_material.data());
+    size_t ikm_len = ikm_material.length();
 
     // Salt
     const unsigned char* salt_ptr = reinterpret_cast<const unsigned char*>(m_salt.data());

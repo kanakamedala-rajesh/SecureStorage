@@ -375,5 +375,49 @@ Error::Errc FileUtil::listDirectory(const std::string& directoryPath, std::vecto
     return Error::Errc::Success;
 }
 
+Error::Errc FileUtil::readFileIntoString(const std::string& filepath, std::string& data) {
+    data.clear();
+    if (filepath.empty()) {
+        SS_LOG_ERROR("Filepath for read is empty.");
+        return Error::Errc::InvalidArgument;
+    }
+
+    std::ifstream ifs(filepath, std::ios::binary | std::ios::ate);
+    if (!ifs.is_open() || !ifs.good()) {
+        SS_LOG_DEBUG("Failed to open file for reading: " << filepath << " - " << strerror(errno));
+        return Error::Errc::FileOpenFailed;
+    }
+
+    std::streamsize size = ifs.tellg();
+    if (size < 0) {
+        SS_LOG_ERROR("Failed to determine size of file: " << filepath);
+        ifs.close();
+        return Error::Errc::FileReadFailed;
+    }
+    ifs.seekg(0, std::ios::beg);
+
+    if (size == 0) {
+        SS_LOG_DEBUG("File is empty: " << filepath);
+        ifs.close();
+        return Error::Errc::Success;
+    }
+
+    data.resize(static_cast<size_t>(size));
+    if (!data.empty()) {
+         // Reading into a std::string's buffer requires careful handling in C++11/14.
+         // &data[0] is a common way to get a non-const pointer to the buffer.
+         ifs.read(&data[0], size);
+         if (!ifs.good() && !ifs.eof()) {
+            SS_LOG_ERROR("Failed to read data from file: " << filepath << " - Read " << ifs.gcount() << " of " << size << " bytes. Error: " << strerror(errno));
+            data.clear();
+            ifs.close();
+            return Error::Errc::FileReadFailed;
+        }
+    }
+    ifs.close();
+    SS_LOG_DEBUG("Successfully read " << data.size() << " bytes into string from file: " << filepath);
+    return Error::Errc::Success;
+}
+
 } // namespace Utils
 } // namespace SecureStorage

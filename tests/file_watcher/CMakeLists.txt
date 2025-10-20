@@ -17,8 +17,7 @@ target_link_libraries(test_ss_file_watcher PRIVATE
     ss_utils          # For FileUtil and Logger (used by watcher and potentially by tests)
     Threads::Threads  # For pthread, which FileWatcher uses
     gtest
-    gtest_main
 )
 
-# Add this test executable to CTest
-add_test(NAME SsFileWatcherTests COMMAND test_ss_file_watcher)
+# Discover and add tests from the executable to CTest
+gtest_discover_tests(test_ss_file_watcher)

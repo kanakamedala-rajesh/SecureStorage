@@ -18,8 +18,7 @@ add_executable(test_ss_utils
 target_link_libraries(test_ss_utils PRIVATE
     ss_utils
     gtest # Provided by FetchContent for googletest
-    gtest_main # Provided by FetchContent for googletest
 )
 
-# Add this test executable to CTest
-add_test(NAME ssUtilsTests COMMAND test_ss_utils)
+# Discover and add tests from the executable to CTest
+gtest_discover_tests(test_ss_utils)

@@ -15,20 +15,21 @@ public:
 
     // Constructor initializes the SecureStore and integrates FileWatcher
     SecureStorageManagerImpl(
-        const std::string& rootStoragePath, 
+        const std::string& rootStoragePath,
         const std::string& deviceSerialNumber,
-        FileWatcher::EventCallback fileWatcherCallback = nullptr // Optional callback for file watcher events
+        const std::string& deviceSecretFilePath,
+        FileWatcher::EventCallback fileWatcherCallback
     )
         : secureStoreInstance(nullptr),
           fileWatcherInstance(nullptr),
           isManagerInitialized(false),
-          isFileWatcherActive(false) {  
-        
+          isFileWatcherActive(false) {
+
         SS_LOG_INFO("SecureStorageManagerImpl: Initializing with root path: '" << rootStoragePath
                     << "' and device serial: '" << (deviceSerialNumber.empty() ? "EMPTY" : "PRESENT") << "'");
 
         secureStoreInstance = std::unique_ptr<Storage::SecureStore>(
-            new Storage::SecureStore(rootStoragePath, deviceSerialNumber)
+            new Storage::SecureStore(rootStoragePath, deviceSerialNumber, deviceSecretFilePath)
         );
 
         if (secureStoreInstance && secureStoreInstance->isInitialized()) {
@@ -87,8 +88,9 @@ public:
 SecureStorageManager::SecureStorageManager(
     const std::string& rootStoragePath,
     const std::string& deviceSerialNumber,
-    FileWatcher::EventCallback fileWatcherCallback = nullptr
-) : m_impl(new SecureStorageManagerImpl(rootStoragePath, deviceSerialNumber, fileWatcherCallback)) {}
+    const std::string& deviceSecretFilePath,
+    FileWatcher::EventCallback fileWatcherCallback
+) : m_impl(new SecureStorageManagerImpl(rootStoragePath, deviceSerialNumber, deviceSecretFilePath, fileWatcherCallback)) {}
 
 SecureStorageManager::~SecureStorageManager() = default; // Needed for std::unique_ptr<PImpl>
 

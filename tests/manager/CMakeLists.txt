@@ -15,7 +15,6 @@ add_executable(test_ss_manager
 target_link_libraries(test_ss_manager PRIVATE
     SecureStorage_lib   # The library under test
     gtest               # Google Test framework
-    gtest_main          # Google Test main
 )
 
 # Ensure headers from SecureStorage_lib (like SecureStorage.h) are findable
@@ -25,5 +24,5 @@ target_link_libraries(test_ss_manager PRIVATE
 #     "${CMAKE_SOURCE_DIR}/src"
 # )
 
-# Add this test executable to CTest
-add_test(NAME SsManagerTests COMMAND test_ss_manager)
+# Discover and add tests to CTest
+gtest_discover_tests(test_ss_manager)

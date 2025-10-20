@@ -12,7 +12,6 @@ enable_language(C)
 # Mbed TLS specific CMake variables before FetchContent_Declare
 # Disable programs and tests from Mbed TLS build as we only need the library
 set(ENABLE_PROGRAMS OFF CACHE BOOL "Disable Mbed TLS programs" FORCE)
-set(ENABLE_TESTING OFF CACHE BOOL "Disable Mbed TLS tests" FORCE) # Mbed TLS's own tests
 set(USE_SHARED_MBEDTLS_LIBRARY OFF CACHE BOOL "Build Mbed TLS as a static library" FORCE)
 set(USE_STATIC_MBEDTLS_LIBRARY ON CACHE BOOL "Build Mbed TLS as a static library" FORCE)
 
@@ -54,10 +53,15 @@ set(INSTALL_GTEST OFF CACHE BOOL "Disable installing gtest" FORCE)
 
 FetchContent_MakeAvailable(googletest)
 
+include(GoogleTest)
 
 # --- Project Structure ---
 add_subdirectory(src)
+
+# Enable testing for the project
+enable_testing()
 add_subdirectory(tests)
+
 add_subdirectory(examples)
 
 # --- Installation (Optional, implemented later) ---

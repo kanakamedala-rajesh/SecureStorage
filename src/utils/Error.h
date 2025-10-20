@@ -26,6 +26,7 @@ enum class Errc {
     FileWriteFailed,
     FileRemoveFailed,
     FileRenameFailed,
+    InvalidFile,                 // File is in an invalid state (e.g., empty when content is expected)
     PathNotFound,
     AccessDenied,
 

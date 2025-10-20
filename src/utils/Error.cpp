@@ -29,6 +29,8 @@ std::string SecureStorageErrorCategory::message(int condition) const {
             return "Failed to remove file";
         case Errc::FileRenameFailed:
             return "Failed to rename file";
+        case Errc::InvalidFile:
+            return "File is in an invalid state (e.g., empty)";
         case Errc::PathNotFound:
             return "Specified path not found";
         case Errc::AccessDenied:
