@@ -28,12 +28,13 @@ void printHex(const std::string& prefix, const std::vector<unsigned char>& data)
 void printUsage() {
     std::cerr << "SecureStorage File Utility" << std::endl;
     std::cerr << "Usage:" << std::endl;
-    std::cerr << "  SecureStorageExample encrypt <serial_number> <input_plaintext_file> <output_encrypted_file>" << std::endl;
-    std::cerr << "  SecureStorageExample decrypt <serial_number> <input_encrypted_file> <output_plaintext_file>" << std::endl;
+    std::cerr << "  SecureStorageExample encrypt <serial_number> <secret_file_path> <input_plaintext_file> <output_encrypted_file>" << std::endl;
+    std::cerr << "  SecureStorageExample decrypt <serial_number> <secret_file_path> <input_encrypted_file> <output_plaintext_file>" << std::endl;
     std::cerr << std::endl;
     std::cerr << "Arguments:" << std::endl;
     std::cerr << "  encrypt/decrypt       : Operation mode." << std::endl;
-    std::cerr << "  <serial_number>       : Device serial number (e.g., 9 digits) for key derivation." << std::endl;
+    std::cerr << "  <serial_number>       : Device serial number for key derivation." << std::endl;
+    std::cerr << "  <secret_file_path>    : Path to the file with the device secret." << std::endl;
     std::cerr << "  <input_file>          : Path to the input file." << std::endl;
     std::cerr << "  <output_file>         : Path to the output file." << std::endl;
 }
@@ -43,18 +44,24 @@ int main(int argc, char* argv[]) {
     // SecureStorage::Utils::Logger::getInstance().setLogLevel(SecureStorage::Utils::LogLevel::DEBUG);
 
     std::cout << "Argument Count: "<< argc << std::endl;
-    if (argc < 5) {
+    if (argc < 6) {
         printUsage();
         return 1;
     }
 
     std::string mode = argv[1];
     std::string serialNumber = argv[2];
-    std::string inputFile = argv[3];
-    std::string outputFile = argv[4];
+    std::string secretFilePath = argv[3];
+    std::string inputFile = argv[4];
+    std::string outputFile = argv[5];
 
     if (serialNumber.empty()) {
         SS_LOG_ERROR("Serial number cannot be empty.");
+        printUsage();
+        return 1;
+    }
+    if (secretFilePath.empty()) {
+        SS_LOG_ERROR("Secret file path cannot be empty.");
         printUsage();
         return 1;
     }
@@ -66,13 +73,14 @@ int main(int argc, char* argv[]) {
 
     SS_LOG_INFO("Mode: " << mode);
     SS_LOG_INFO("Serial Number: " << serialNumber);
+    SS_LOG_INFO("Secret File: " << secretFilePath);
     SS_LOG_INFO("Input File: " << inputFile);
     SS_LOG_INFO("Output File: " << outputFile);
 
     // Initialize KeyProvider and Encryptor directly
     // For C++11, use new for unique_ptr
     std::unique_ptr<SecureStorage::Crypto::KeyProvider> keyProvider(
-        new SecureStorage::Crypto::KeyProvider(serialNumber)
+        new SecureStorage::Crypto::KeyProvider(serialNumber, secretFilePath)
     );
     // Default personalization string for Encryptor is usually fine for this kind of tool
     std::unique_ptr<SecureStorage::Crypto::Encryptor> encryptor(

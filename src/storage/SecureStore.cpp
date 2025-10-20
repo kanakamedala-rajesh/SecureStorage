@@ -8,7 +8,7 @@
 namespace SecureStorage {
 namespace Storage {
 
-SecureStore::SecureStore(std::string rootStoragePath, std::string deviceSerialNumber)
+SecureStore::SecureStore(std::string rootStoragePath, std::string deviceSerialNumber, std::string deviceSecretFilePath)
     : m_rootStoragePath(std::move(rootStoragePath)),
       m_keyProvider(nullptr), // Initialize later
       m_encryptor(nullptr),   // Initialize later
@@ -20,6 +20,10 @@ SecureStore::SecureStore(std::string rootStoragePath, std::string deviceSerialNu
     }
     if (deviceSerialNumber.empty()) {
         SS_LOG_ERROR("SecureStore: Device serial number cannot be empty for key derivation.");
+        return; // m_initialized remains false
+    }
+    if (deviceSecretFilePath.empty()) {
+        SS_LOG_ERROR("SecureStore: Device secret file path cannot be empty.");
         return; // m_initialized remains false
     }
 
@@ -38,7 +42,9 @@ SecureStore::SecureStore(std::string rootStoragePath, std::string deviceSerialNu
 
     // Initialize crypto components
     // Using C++11 style `new` for unique_ptr as make_unique is C++14
-    m_keyProvider = std::unique_ptr<Crypto::KeyProvider>(new Crypto::KeyProvider(std::move(deviceSerialNumber)));
+    m_keyProvider = std::unique_ptr<Crypto::KeyProvider>(
+        new Crypto::KeyProvider(std::move(deviceSerialNumber), std::move(deviceSecretFilePath))
+    );
     m_encryptor = std::unique_ptr<Crypto::Encryptor>(new Crypto::Encryptor()); // Uses default seed
 
     // Derive and store the master encryption key

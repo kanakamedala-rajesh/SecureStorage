@@ -46,6 +46,15 @@ public:
     static Error::Errc readFile(const std::string& filepath, std::vector<unsigned char>& data);
 
     /**
+     * @brief Reads the entire content of a file into a string.
+     *
+     * @param filepath The path of the file to read.
+     * @param[out] data The string to store the file's content.
+     * @return SecureStorage::Error::Errc::Success on success, or an error code on failure.
+     */
+    static Error::Errc readFileIntoString(const std::string& filepath, std::string& data);
+
+    /**
      * @brief Deletes a file.
      *
      * @param filepath The path of the file to delete.

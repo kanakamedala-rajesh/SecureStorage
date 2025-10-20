@@ -13,7 +13,6 @@ target_link_libraries(test_ss_crypto PRIVATE
     ss_utils        # Dependency of ss_crypto, also for test logging
     mbedcrypto      # Dependency of ss_crypto
     gtest           # Google Test framework
-    gtest_main      # Google Test main
 )
 
-add_test(NAME SsCryptoTests COMMAND test_ss_crypto)
+gtest_discover_tests(test_ss_crypto)

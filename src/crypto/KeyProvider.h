@@ -37,13 +37,14 @@ public:
      * @brief Constructs a KeyProvider.
      *
      * @param deviceSerialNumber The unique serial number of the device.
-     * This will be used as the Input Keying Material (IKM) for HKDF.
+     * @param deviceSecretFilePath The path to a file containing a device-specific secret.
+     * The content of this file will be combined with the serial number to form the IKM.
      * @param salt A salt value for HKDF. If empty, a default salt is used.
-     * It's recommended to use a specific, fixed salt for your application.
      * @param info An info string for HKDF context separation. If empty, a default info string is used.
      */
     explicit KeyProvider(
         std::string deviceSerialNumber,
+        std::string deviceSecretFilePath,
         std::string salt = HKDF_SALT_DEFAULT,
         std::string info = HKDF_INFO_DEFAULT);
 
@@ -70,6 +71,7 @@ private:
     std::unique_ptr<Impl> m_impl;
 
     std::string m_deviceSerialNumber;
+    std::string m_deviceSecretFilePath;
     std::string m_salt;
     std::string m_info;
 };

@@ -16,8 +16,7 @@ target_link_libraries(test_ss_storage PRIVATE
     ss_crypto       # Dependency of ss_storage
     ss_utils        # Dependency of ss_storage and for test utilities
     gtest           # Google Test framework
-    gtest_main      # Google Test main
 )
 
-# Add this test executable to CTest for automated test runs
-add_test(NAME SsStorageTests COMMAND test_ss_storage)
+# Discover and add tests from the executable to CTest
+gtest_discover_tests(test_ss_storage)

@@ -35,8 +35,9 @@ public:
      * @param rootStoragePath The absolute path to the directory where encrypted files will be stored.
      * This directory will be created if it doesn't exist.
      * @param deviceSerialNumber The unique serial number of the device, used for key derivation.
+     * @param deviceSecretFilePath The path to the file containing the device-specific secret.
      */
-    SecureStore(std::string rootStoragePath, std::string deviceSerialNumber);
+    SecureStore(std::string rootStoragePath, std::string deviceSerialNumber, std::string deviceSecretFilePath);
 
     ~SecureStore() = default;
 

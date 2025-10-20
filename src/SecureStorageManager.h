@@ -123,13 +123,15 @@ public:
      * @param deviceSerialNumber A unique identifier for the device (e.g., a serial number)
      * used in the cryptographic key derivation process.
      * Must not be empty.
+     * @param deviceSecretFilePath The path to the file containing the device-specific secret.
      * @param fileWatcherCallback An optional callback for file watcher events.
      * If nullptr, default logging by FileWatcher will occur.
      */
     SecureStorageManager(
-        const std::string& storagePath,
-        const std::string& keyFilePath,
-        FileWatcher::EventCallback callback); // MODIFIED: Was 'int pollingIntervalMs'
+        const std::string& rootStoragePath,
+        const std::string& deviceSerialNumber,
+        const std::string& deviceSecretFilePath,
+        FileWatcher::EventCallback callback = nullptr);
 
     /**
      * @brief Destructor. Cleans up resources.
