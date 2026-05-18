@@ -247,21 +247,35 @@ jobs:
       - name: Determine Version and Release Settings
         id: version_settings
         shell: bash
+        env:
+          IS_MANUAL_DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
+          REQUESTED_TEST_TAG_NAME: ${{ github.event.inputs.test_tag_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_REF_NAME: ${{ github.ref_name }}
         run: |
-          IS_MANUAL_DISPATCH="${{ github.event_name == 'workflow_dispatch' }}"
+          validate_version_name() {
+            local version_name="$1"
+            if [[ ! "$version_name" =~ ^v[0-9]+[.][0-9]+[.][0-9]+([.-][0-9A-Za-z][0-9A-Za-z._-]*)?$ ]]; then
+              echo "ERROR: Invalid release tag '$version_name'. Use a tag like v1.2.3 or v1.2.3-rc1."
+              exit 1
+            fi
+          }
+
           echo "IS_MANUAL_DISPATCH: $IS_MANUAL_DISPATCH"
 
           if [[ "$IS_MANUAL_DISPATCH" == "true" ]]; then
-            VERSION_NAME="${{ github.event.inputs.test_tag_name }}"
+            VERSION_NAME="$REQUESTED_TEST_TAG_NAME"
             if [[ -z "$VERSION_NAME" ]]; then
               VERSION_NAME="v0.0.0-manual-test-$(date +%Y%m%d%H%M%S)"
             fi
+            validate_version_name "$VERSION_NAME"
             DRAFT_RELEASE="true"
             PRERELEASE_FLAG="true" 
             RELEASE_NAME_PREFIX="Test Release: "
             echo "Manual dispatch detected. Using test version: $VERSION_NAME"
-          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION_NAME="${{ github.ref_name }}"
+          elif [[ "$EVENT_REF" == refs/tags/v* ]]; then
+            VERSION_NAME="$EVENT_REF_NAME"
+            validate_version_name "$VERSION_NAME"
             DRAFT_RELEASE="false"
             PRERELEASE_FLAG="false" 
             if [[ "$VERSION_NAME" == *-alpha* || "$VERSION_NAME" == *-beta* || "$VERSION_NAME" == *-rc* ]]; then
@@ -338,9 +352,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION_NAME: ${{ env.VERSION_NAME }}
+          RELEASE_UPLOAD_URL: ${{ steps.create_release.outputs.upload_url }}
         run: |
           echo "Target release tag for asset upload: $VERSION_NAME"
-          if [ -z "${{ steps.create_release.outputs.upload_url }}" ]; then
+          if [ -z "$RELEASE_UPLOAD_URL" ]; then
             echo "Upload URL from create-release step is empty. Will rely on gh release upload to find tag $VERSION_NAME."
           fi
 
