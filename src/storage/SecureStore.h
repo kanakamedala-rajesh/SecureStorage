@@ -25,7 +25,7 @@ const std::string TEMP_FILE_SUFFIX = ".tmp";
  * This class uses a KeyProvider to derive a master encryption key based on a
  * device serial number, and an Encryptor to perform AES-256-GCM encryption.
  * Data items are stored as individual encrypted files within a specified root path.
- * Includes a backup mechanism for resilience.
+ * Includes a write-time backup mechanism for resilience during updates.
  */
 class SecureStore {
 public:
@@ -58,6 +58,7 @@ public:
     /**
      * @brief Stores a data item securely.
      * The data is encrypted and written to a file named after the data_id.
+     * Existing data is encrypted with data_id-bound authenticated context.
      * An existing backup becomes the old backup, an existing main file becomes the new backup.
      *
      * @param data_id A unique identifier for the data item. Used to name the file.
@@ -69,9 +70,9 @@ public:
 
     /**
      * @brief Retrieves a securely stored data item.
-     * Attempts to read from the main data file first. If that fails (missing, corrupt),
-     * it attempts to read from the backup file. If the backup is used and successfully
-     * decrypted, an attempt is made to restore it to the main file.
+     * Attempts to read from the main data file. Backups are not treated as
+     * authoritative current data during retrieval because they may contain stale
+     * but otherwise authentic ciphertext.
      *
      * @param data_id The unique identifier of the data item to retrieve.
      * @param[out] out_plain_data A vector to store the decrypted data.
@@ -94,7 +95,7 @@ public:
      * @brief Checks if a data item exists.
      *
      * @param data_id The unique identifier of the data item.
-     * @return true if the data item (either main or backup file) exists, false otherwise.
+     * @return true if the authoritative main data file exists, false otherwise.
      */
     bool dataExists(const std::string& data_id) const;
 
@@ -144,6 +145,14 @@ private:
      * @return SecureStorage::Error::Errc::Success if valid, Errc::InvalidArgument otherwise.
      */
     Error::Errc validateDataId(const std::string& data_id) const;
+
+    /**
+     * @brief Builds authenticated context for binding ciphertext to a data_id.
+     *
+     * @param data_id The data identifier to bind to the ciphertext.
+     * @return AAD bytes used by the encryptor for authentication.
+     */
+    std::vector<unsigned char> buildAuthenticatedData(const std::string& data_id) const;
 };
 
 } // namespace Storage
