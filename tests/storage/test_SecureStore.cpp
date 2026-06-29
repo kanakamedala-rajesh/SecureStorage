@@ -93,6 +93,11 @@ protected:
     std::string getBackupFilePath(const std::string& data_id) const {
         return currentTestRootDir + "/" + data_id + DATA_FILE_EXTENSION + BACKUP_FILE_EXTENSION;
     }
+
+    std::vector<unsigned char> getAuthenticatedData(const std::string& data_id) const {
+        const std::string context = "SecureStore:v1:" + data_id;
+        return std::vector<unsigned char>(context.begin(), context.end());
+    }
 };
 
 TEST_F(SecureStoreTest, InitializationSuccess) {
@@ -257,7 +262,7 @@ TEST_F(SecureStoreTest, ListDataIds) {
     ASSERT_EQ(ids[0], "id2");
 }
 
-TEST_F(SecureStoreTest, RetrieveFromBackupAndRestore) {
+TEST_F(SecureStoreTest, DoesNotRetrieveOrRestoreStaleBackup) {
     SecureStore store(currentTestRootDir, dummySerial);
     ASSERT_TRUE(store.isInitialized());
 
@@ -284,7 +289,7 @@ TEST_F(SecureStoreTest, RetrieveFromBackupAndRestore) {
     std::unique_ptr<SecureStorage::Crypto::KeyProvider> temp_kp(new SecureStorage::Crypto::KeyProvider(dummySerial)); // Fully qualify namespace
     std::vector<unsigned char> master_key_for_test;
     ASSERT_EQ(temp_kp->getEncryptionKey(master_key_for_test, SecureStorage::Crypto::AES_GCM_KEY_SIZE_BYTES), Errc::Success); // Fully qualify namespace
-    ASSERT_EQ(temp_encryptor.decrypt(backup_encrypted_content, master_key_for_test, backup_decrypted_content), Errc::Success);
+    ASSERT_EQ(temp_encryptor.decrypt(backup_encrypted_content, master_key_for_test, backup_decrypted_content, getAuthenticatedData(id)), Errc::Success);
     ASSERT_EQ(backup_decrypted_content, data); // Backup has original data
 
     // Now corrupt the main file (which has data_v2)
@@ -294,16 +299,36 @@ TEST_F(SecureStoreTest, RetrieveFromBackupAndRestore) {
     ofs.close();
 
     std::vector<unsigned char> retrieved_data;
-    // This retrieveData should fail on main, then read backup (original 'data'), decrypt it, and restore it to main.
-    ASSERT_EQ(store.retrieveData(id, retrieved_data), Errc::Success);
-    ASSERT_EQ(retrieved_data, data); // Should be original 'data' from backup
+    // Retrieval must not trust or promote the older backup after the current main file is corrupted.
+    Errc result = store.retrieveData(id, retrieved_data);
+    ASSERT_TRUE(result == Errc::AuthenticationFailed || result == Errc::DecryptionFailed)
+        << SecureStorageErrorCategory::get().message(static_cast<int>(result));
+    ASSERT_TRUE(retrieved_data.empty());
 
-    // Verify main file was restored with backup's content
-    std::vector<unsigned char> main_file_content_after_restore_encrypted;
-    ASSERT_EQ(FileUtil::readFile(mainFile, main_file_content_after_restore_encrypted), Errc::Success);
-    std::vector<unsigned char> main_file_content_after_restore_decrypted;
-    ASSERT_EQ(temp_encryptor.decrypt(main_file_content_after_restore_encrypted, master_key_for_test, main_file_content_after_restore_decrypted), Errc::Success);
-    ASSERT_EQ(main_file_content_after_restore_decrypted, data);
+    // Verify the stale backup was not restored over the corrupted main file.
+    std::vector<unsigned char> main_file_content_after_retrieve;
+    ASSERT_EQ(FileUtil::readFile(mainFile, main_file_content_after_retrieve), Errc::Success);
+    ASSERT_NE(main_file_content_after_retrieve, backup_encrypted_content);
+}
+
+TEST_F(SecureStoreTest, CiphertextIsBoundToDataId) {
+    SecureStore store(currentTestRootDir, dummySerial);
+    ASSERT_TRUE(store.isInitialized());
+
+    const std::string sourceId = "source_id";
+    const std::string targetId = "target_id";
+    const std::vector<unsigned char> data = {'b', 'o', 'u', 'n', 'd'};
+    ASSERT_EQ(store.storeData(sourceId, data), Errc::Success);
+
+    std::vector<unsigned char> encrypted_content;
+    ASSERT_EQ(FileUtil::readFile(getDataFilePath(sourceId), encrypted_content), Errc::Success);
+    ASSERT_EQ(FileUtil::atomicWriteFile(getDataFilePath(targetId), encrypted_content), Errc::Success);
+
+    std::vector<unsigned char> retrieved_data;
+    Errc result = store.retrieveData(targetId, retrieved_data);
+    ASSERT_TRUE(result == Errc::AuthenticationFailed || result == Errc::DecryptionFailed)
+        << SecureStorageErrorCategory::get().message(static_cast<int>(result));
+    ASSERT_TRUE(retrieved_data.empty());
 }
 
 TEST_F(SecureStoreTest, RetrieveFailsIfMainCorruptAndBackupMissing) {
@@ -325,11 +350,8 @@ TEST_F(SecureStoreTest, RetrieveFailsIfMainCorruptAndBackupMissing) {
 
     std::vector<unsigned char> retrieved_data;
     Errc result = store.retrieveData(id, retrieved_data);
-    // Expected: DecryptionFailed or AuthenticationFailed for the main file,
-    // then DataNotFound because backup also fails.
-    // The exact error depends on how deep the retry goes.
-    // retrieveData should return the error from the last failed attempt.
-    ASSERT_TRUE(result == Errc::AuthenticationFailed || result == Errc::DecryptionFailed || result == Errc::DataNotFound);
+    // Expected: DecryptionFailed or AuthenticationFailed for the corrupted main file.
+    ASSERT_TRUE(result == Errc::AuthenticationFailed || result == Errc::DecryptionFailed);
     ASSERT_TRUE(retrieved_data.empty());
 }
 
@@ -356,7 +378,7 @@ TEST_F(SecureStoreTest, RetrieveFailsIfMainMissingAndBackupCorrupt) {
 
     std::vector<unsigned char> retrieved_data;
     Errc result = store.retrieveData(id, retrieved_data);
-    ASSERT_TRUE(result == Errc::AuthenticationFailed || result == Errc::DecryptionFailed)
+    ASSERT_EQ(result, Errc::DataNotFound)
         << SecureStorageErrorCategory::get().message(static_cast<int>(result));
     ASSERT_TRUE(retrieved_data.empty());
 }

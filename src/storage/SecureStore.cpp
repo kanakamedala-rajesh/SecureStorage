@@ -91,6 +91,13 @@ Error::Errc SecureStore::validateDataId(const std::string& data_id) const {
 }
 
 
+std::vector<unsigned char> SecureStore::buildAuthenticatedData(const std::string& data_id) const {
+    static const char context_prefix[] = "SecureStore:v1:";
+    std::vector<unsigned char> aad(context_prefix, context_prefix + sizeof(context_prefix) - 1);
+    aad.insert(aad.end(), data_id.begin(), data_id.end());
+    return aad;
+}
+
 Error::Errc SecureStore::storeData(const std::string& data_id, const std::vector<unsigned char>& plain_data) {
     if (!m_initialized) {
         SS_LOG_ERROR("SecureStore not initialized. Cannot store data.");
@@ -101,8 +108,9 @@ Error::Errc SecureStore::storeData(const std::string& data_id, const std::vector
         return id_validation_err;
     }
 
+    const std::vector<unsigned char> aad = buildAuthenticatedData(data_id);
     std::vector<unsigned char> encrypted_data;
-    Error::Errc enc_err = m_encryptor->encrypt(plain_data, m_masterKey, encrypted_data);
+    Error::Errc enc_err = m_encryptor->encrypt(plain_data, m_masterKey, encrypted_data, aad);
     if (enc_err != Error::Errc::Success) {
         SS_LOG_ERROR("Failed to encrypt data for id '" << data_id << "'. Error: " << static_cast<int>(enc_err));
         return enc_err;
@@ -176,82 +184,31 @@ Error::Errc SecureStore::retrieveData(const std::string& data_id, std::vector<un
         return id_validation_err;
     }
 
-    std::string main_file = getDataFilePath(data_id);
-    std::string backup_file = getBackupFilePath(data_id);
-    std::vector<unsigned char> encrypted_data_to_decrypt; // Will hold data from main or backup
-    bool retrieved_from_main = false;
-    bool retrieved_from_backup = false;
+    const std::string main_file = getDataFilePath(data_id);
+    std::vector<unsigned char> encrypted_data_to_decrypt;
 
-    // --- Stage 1: Try Main File ---
     SS_LOG_DEBUG("Attempting to retrieve data for id '" << data_id << "' from main file: " << main_file);
     Error::Errc main_read_err = Utils::FileUtil::readFile(main_file, encrypted_data_to_decrypt);
-
-    if (main_read_err == Error::Errc::Success) {
-        Error::Errc main_dec_err = m_encryptor->decrypt(encrypted_data_to_decrypt, m_masterKey, out_plain_data);
-        if (main_dec_err == Error::Errc::Success) {
-            SS_LOG_INFO("Successfully retrieved and decrypted data for id '" << data_id << "' from main file.");
-            retrieved_from_main = true;
-            // Optionally, if we know a backup exists and might be older, consider deleting it
-            // For now, successful retrieval from main is enough.
-        } else {
-            SS_LOG_WARN("Failed to decrypt main data file '" << main_file << "' for id '" << data_id
-                        << "'. Error: " << Error::SecureStorageErrorCategory::get().message(static_cast<int>(main_dec_err))
-                        << " (" << static_cast<int>(main_dec_err) << "). Will attempt backup.");
-            // Consider deleting the corrupted main file to prevent reuse,
-            // especially if backup retrieval is successful.
-            // Utils::FileUtil::deleteFile(main_file); // Or do this after successful backup retrieval & restore
-        }
-    } else {
+    if (main_read_err != Error::Errc::Success) {
         SS_LOG_WARN("Failed to read main data file '" << main_file << "' for id '" << data_id
                     << "'. Error: " << Error::SecureStorageErrorCategory::get().message(static_cast<int>(main_read_err))
-                    << " (" << static_cast<int>(main_read_err) << "). Will attempt backup.");
+                    << " (" << static_cast<int>(main_read_err)
+                    << "). Backup files are not used as authoritative data.");
+        return Error::Errc::DataNotFound;
     }
 
-    if (retrieved_from_main) {
-        return Error::Errc::Success;
+    const std::vector<unsigned char> aad = buildAuthenticatedData(data_id);
+    Error::Errc main_dec_err = m_encryptor->decrypt(encrypted_data_to_decrypt, m_masterKey, out_plain_data, aad);
+    if (main_dec_err != Error::Errc::Success) {
+        SS_LOG_WARN("Failed to decrypt main data file '" << main_file << "' for id '" << data_id
+                    << "'. Error: " << Error::SecureStorageErrorCategory::get().message(static_cast<int>(main_dec_err))
+                    << " (" << static_cast<int>(main_dec_err)
+                    << "). Backup files are not used as authoritative data.");
+        out_plain_data.clear();
+        return main_dec_err;
     }
 
-    // --- Stage 2: Try Backup File (if main file attempt failed) ---
-    SS_LOG_INFO("Attempting to retrieve data for id '" << data_id << "' from backup file: " << backup_file);
-    // Clear buffer in case main file read partially filled it but then decryption failed
-    encrypted_data_to_decrypt.clear(); 
-    out_plain_data.clear(); // Clear output from any failed main attempt
-
-    Error::Errc backup_read_err = Utils::FileUtil::readFile(backup_file, encrypted_data_to_decrypt);
-    if (backup_read_err != Error::Errc::Success) {
-        SS_LOG_ERROR("Failed to read backup data file '" << backup_file << "' for id '" << data_id
-                     << "'. Error: " << Error::SecureStorageErrorCategory::get().message(static_cast<int>(backup_read_err))
-                     << " (" << static_cast<int>(backup_read_err) << "). Data not found.");
-        return Error::Errc::DataNotFound; // Main failed (read or decrypt), and backup read failed.
-    }
-
-    Error::Errc backup_dec_err = m_encryptor->decrypt(encrypted_data_to_decrypt, m_masterKey, out_plain_data);
-    if (backup_dec_err != Error::Errc::Success) {
-        SS_LOG_ERROR("Failed to decrypt backup data file '" << backup_file << "' for id '" << data_id
-                     << "'. Error: " << Error::SecureStorageErrorCategory::get().message(static_cast<int>(backup_dec_err))
-                     << " (" << static_cast<int>(backup_dec_err) << "). Data recovery failed.");
-        return backup_dec_err; // Main failed, backup decryption failed.
-    }
-
-    // If we are here, data was successfully read and decrypted from backup
-    retrieved_from_backup = true;
-    SS_LOG_INFO("Data for id '" << data_id << "' was successfully retrieved from backup. Attempting to restore to main file.");
-    
-    // Before restoring, if the main file failed due to corruption (not just missing), delete it.
-    if (main_read_err == Error::Errc::Success) { // Implies main file existed but failed decryption
-        SS_LOG_DEBUG("Deleting potentially corrupted main file '" << main_file << "' before restoring from backup.");
-        Utils::FileUtil::deleteFile(main_file);
-    }
-
-    Error::Errc write_main_err = Utils::FileUtil::atomicWriteFile(main_file, encrypted_data_to_decrypt); // Write the raw ENCRYPTED backup data
-    if (write_main_err == Error::Errc::Success) {
-        SS_LOG_INFO("Successfully restored backup data to main file: " << main_file);
-    } else {
-        SS_LOG_WARN("Failed to restore backup data to main file '" << main_file
-                    << "'. Error: " << Error::SecureStorageErrorCategory::get().message(static_cast<int>(write_main_err))
-                    << " (" << static_cast<int>(write_main_err) << "). Main file may be missing or outdated for next read.");
-        // Data is still successfully retrieved for this call, this is just a warning about the restore op.
-    }
+    SS_LOG_INFO("Successfully retrieved and decrypted data for id '" << data_id << "' from main file.");
     return Error::Errc::Success;
 }
 
@@ -292,8 +249,7 @@ bool SecureStore::dataExists(const std::string& data_id) const {
     if (!m_initialized) return false;
     if (validateDataId(data_id) != Error::Errc::Success) return false;
 
-    return Utils::FileUtil::pathExists(getDataFilePath(data_id)) ||
-           Utils::FileUtil::pathExists(getBackupFilePath(data_id));
+    return Utils::FileUtil::pathExists(getDataFilePath(data_id));
 }
 
 Error::Errc SecureStore::listDataIds(std::vector<std::string>& out_data_ids) const {
